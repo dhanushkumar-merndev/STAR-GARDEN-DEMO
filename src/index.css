@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+
+  --color-forest-50: #f2f7f2;
+  --color-forest-100: #e0ebe0;
+  --color-forest-200: #c1d7c3;
+  --color-forest-300: #97ba9c;
+  --color-forest-400: #6b9a72;
+  --color-forest-500: #4a7d52;
+  --color-forest-600: #366240;
+  --color-forest-700: #2c4e34;
+  --color-forest-800: #1f3a26;
+  --color-forest-900: #142a1a;
+  --color-forest-950: #0b1810;
+
+  --color-gold-50: #fdf8ec;
+  --color-gold-100: #f9edc9;
+  --color-gold-200: #f2d98d;
+  --color-gold-300: #eabf51;
+  --color-gold-400: #dda52e;
+  --color-gold-500: #c1861f;
+  --color-gold-600: #9c6819;
+  --color-gold-700: #7c5119;
+
+  --color-cream: #faf7ef;
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-marquee: marquee 32s linear infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-18px) rotate(4deg); }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--color-cream);
+  color: var(--color-forest-900);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-gold-300);
+  color: var(--color-forest-950);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* subtle scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-cream);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-forest-300);
+  border-radius: 999px;
+}
