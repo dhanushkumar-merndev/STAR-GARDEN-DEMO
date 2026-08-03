@@ -9,11 +9,13 @@ export const company = {
     "Star Gardens provides plants on a rental basis, with a wide range of indoor and outdoor plants for corporate companies. Plants on Hire is the second-generation family business service provider in Bangalore.",
   phone: '+91 97430 30555',
   phoneHref: '+919743030555',
+  whatsappHref: '919743030555',
   landline: '080 4112 1414',
   landlineHref: '08041121414',
   email: 'abhi@stargardens.in',
   contactPerson: 'Abhishek Suhas',
   website: 'www.stargardens.in',
+  siteUrl: 'https://www.stargardens.in',
   storeUrl: 'https://mystargardens.com/',
   storeLabel: 'www.mystargardens.com',
   headOffice:
@@ -22,13 +24,16 @@ export const company = {
   establishedNote: '14 years successfully completed with all major clients in Bangalore',
   founded: 2009,
   logo: '/images/logo.webp',
-  ogImage: '/images/hero.webp',
+  // hero.webp is the logo lockup on a white field, not a photograph — it reads as
+  // ghost text behind the hero copy and makes a poor social card. Use real work.
+  ogImage: '/images/gallery-2.webp',
   storeLogo: '/images/store-logo.webp',
 }
 
 // Real project photography supplied by Star Gardens
 export const media = {
-  homeHero: '/images/gallery-1.webp',
+  homeHero: '/images/gallery-2.webp',
+  homePanorama: '/images/gallery-1.webp',
   aboutBanner: '/images/service-landscape-design.webp',
   servicesBanner: '/images/service-green-roofs.webp',
   clientsBanner: '/images/gallery-2.webp',
@@ -367,3 +372,54 @@ export const navLinks = [
   { label: 'Blog', to: '/blog' },
   { label: 'Contact Us', to: '/contact' },
 ]
+
+// Structured data for the business itself. Rendered on the homepage so Google can
+// attach the address, phone and service area to the brand.
+export const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'LandscapingBusiness',
+  name: company.name,
+  description: company.intro,
+  url: company.siteUrl,
+  logo: `${company.siteUrl}${company.logo}`,
+  image: `${company.siteUrl}${company.ogImage}`,
+  telephone: company.phone,
+  email: company.email,
+  foundingDate: String(company.founded),
+  priceRange: '₹₹',
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: 'No. 18, 1st Floor, 1st Main, BSK 1st Stage, Srinivasa Nagar, 80 Feet Main Road',
+    addressLocality: 'Bengaluru',
+    addressRegion: 'Karnataka',
+    postalCode: '560050',
+    addressCountry: 'IN',
+  },
+  areaServed: [
+    { '@type': 'City', name: 'Bengaluru' },
+    { '@type': 'State', name: 'Karnataka' },
+    { '@type': 'State', name: 'Andhra Pradesh' },
+  ],
+  sameAs: [company.storeUrl],
+  hasOfferCatalog: {
+    '@type': 'OfferCatalog',
+    name: 'Landscaping & Plant Services',
+    itemListElement: services.map((s) => ({
+      '@type': 'Offer',
+      itemOffered: { '@type': 'Service', name: s.name, description: s.short },
+      url: `${company.siteUrl}/services/${s.slug}`,
+    })),
+  },
+}
+
+/** Breadcrumb JSON-LD helper. `trail` is [{ name, path }] ending at the current page. */
+export const breadcrumbJsonLd = (trail) => ({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: trail.map((item, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: item.name,
+    item: `${company.siteUrl}${item.path}`,
+  })),
+})

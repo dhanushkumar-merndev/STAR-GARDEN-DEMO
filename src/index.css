@@ -29,28 +29,47 @@
 
   --animate-float: float 6s ease-in-out infinite;
   --animate-float-slow: float 9s ease-in-out infinite;
-  --animate-marquee: marquee 32s linear infinite;
+  --animate-marquee: marquee 38s linear infinite;
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-18px) rotate(4deg); }
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -18px, 0) rotate(4deg); }
 }
 
 @keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
 }
 
-html {
-  scroll-behavior: smooth;
+/* Lenis drives scrolling itself, so native smooth scrolling must stay off. */
+html.lenis,
+html.lenis body {
+  height: auto;
 }
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Lenis ships a `.lenis-smooth iframe { pointer-events: none }` rule to stop iframes
+   swallowing wheel events. It is deliberately omitted — it would make the embedded
+   Google Map on /contact impossible to pan or zoom. */
 
 body {
   margin: 0;
   background: var(--color-cream);
   color: var(--color-forest-900);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
@@ -60,6 +79,27 @@ body {
 
 .font-display {
   font-family: var(--font-display);
+}
+
+/* Scroll reveal — compositor-only properties, so this never triggers layout. */
+.sg-reveal {
+  opacity: 0;
+  transform: translate3d(0, 26px, 0);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sg-reveal-in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Consistent keyboard focus ring across every interactive element. */
+:where(a, button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--color-gold-500);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* subtle scrollbar */
@@ -72,4 +112,21 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--color-forest-300);
   border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sg-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

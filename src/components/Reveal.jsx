@@ -1,16 +1,28 @@
-import { motion } from 'framer-motion'
+import useInView from '../hooks/useInView'
 
-export default function Reveal({ children, delay = 0, y = 24, className = '', ...rest }) {
+/**
+ * Scroll-reveal wrapper. Animates with plain CSS transitions on opacity/transform
+ * only, so every frame stays on the compositor and no JS runs per frame.
+ * `delay` is in milliseconds.
+ */
+export default function Reveal({
+  children,
+  as: Tag = 'div',
+  delay = 0,
+  className = '',
+  style,
+  ...rest
+}) {
+  const [ref, inView] = useInView()
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-80px' }}
-      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
-      className={className}
+    <Tag
+      ref={ref}
+      style={delay ? { ...style, transitionDelay: `${delay}ms` } : style}
+      className={`sg-reveal${inView ? ' sg-reveal-in' : ''}${className ? ` ${className}` : ''}`}
       {...rest}
     >
       {children}
-    </motion.div>
+    </Tag>
   )
 }

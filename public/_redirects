@@ -1,0 +1,4 @@
+# Cloudflare Pages SPA fallback: every unmatched path is served index.html with a
+# 200 so React Router can resolve the route client-side. Static assets in /assets
+# and /images are matched by the filesystem first and never reach this rule.
+/*    /index.html   200
