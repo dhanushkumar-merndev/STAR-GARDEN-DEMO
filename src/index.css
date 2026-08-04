@@ -64,6 +64,26 @@ html.lenis body {
    swallowing wheel events. It is deliberately omitted — it would make the embedded
    Google Map on /contact impossible to pan or zoom. */
 
+/* Desktop rendering scale. Every size in the design system is rem-based, so
+   growing the root font size zooms the entire layout — type, spacing, icons and
+   container widths together — the way browser zoom would. Breakpoints are not
+   affected: rem inside a media query always resolves against the browser's
+   default 16px, never against this value.
+
+   The step at 1536px keeps the eight-link header comfortable; the full 1.33x
+   only kicks in once there is room for it. */
+@media (min-width: 1536px) {
+  :root {
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 1800px) {
+  :root {
+    font-size: 21.3px;
+  }
+}
+
 body {
   margin: 0;
   background: var(--color-cream);

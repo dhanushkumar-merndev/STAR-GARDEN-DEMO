@@ -11,15 +11,20 @@ export default function Footer() {
 
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
         <div className="sm:col-span-2 lg:col-span-1">
-          {/* Wordmark logo — the brand name is part of the image. */}
-          <Link to="/" aria-label={`${company.name} — home`} className="inline-block">
+          {/* Shown in its real colours — inverting it flattened the emblem into a
+              solid white disc. */}
+          <Link
+            to="/"
+            aria-label={`${company.name} — home`}
+            className="inline-flex transition-transform duration-300 hover:-translate-y-0.5"
+          >
             <img
               src={company.logo}
               alt={company.name}
               width={400}
               height={91}
               loading="lazy"
-              className="h-11 w-auto brightness-0 invert"
+              className="h-11 w-auto"
             />
           </Link>
           <p className="mt-5 text-sm leading-relaxed text-forest-300">
@@ -30,15 +35,13 @@ export default function Footer() {
             {company.founded}.
           </p>
 
-          <a
-            href={company.storeUrl}
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            to="/contact"
             className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2.5 text-xs font-semibold text-forest-200 transition hover:border-gold-400/50 hover:text-gold-300"
           >
-            <Icon name="ShoppingBag" size={15} />
-            Shop at {company.storeLabel}
-          </a>
+            <Icon name="Sprout" size={15} />
+            Book a free site visit
+          </Link>
         </div>
 
         <nav aria-label="Footer">
@@ -81,12 +84,6 @@ export default function Footer() {
               <Icon name="Phone" size={17} className="shrink-0 text-gold-300" />
               <a href={`tel:${company.phoneHref}`} className="transition hover:text-gold-300">
                 {company.phone}
-              </a>
-            </li>
-            <li className="flex items-center gap-2.5">
-              <Icon name="PhoneCall" size={17} className="shrink-0 text-gold-300" />
-              <a href={`tel:${company.landlineHref}`} className="transition hover:text-gold-300">
-                {company.landline}
               </a>
             </li>
             <li className="flex items-center gap-2.5">

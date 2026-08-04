@@ -12,7 +12,9 @@ export default function FilterBar({
   onCategoryChange,
 }) {
   return (
-    <div className="sticky top-[60px] z-30 -mx-5 mb-10 bg-cream/90 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-[76px] lg:-mx-8 lg:px-8">
+    // 3.25rem is the header's height (py-2 + a 2.25rem row) — in rem so the two
+    // stay locked together as the root size scales up on large screens.
+    <div className="sticky top-[3.25rem] z-30 -mx-5 mb-10 bg-cream/90 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="flex flex-col gap-3 rounded-2xl border border-forest-100 bg-white p-3 shadow-sm lg:flex-row lg:items-center lg:gap-4 lg:p-4">
         <div className="relative flex-1">
           <Icon

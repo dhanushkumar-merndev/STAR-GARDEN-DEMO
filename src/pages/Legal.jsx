@@ -22,7 +22,7 @@ export default function Legal() {
       />
 
       <Section width="narrow">
-        <Reveal className="space-y-5 text-[15px] leading-relaxed text-forest-700">
+        <Reveal className="space-y-5 text-[0.9375rem] leading-relaxed text-forest-700">
           <p>
             Star Gardens respects your privacy. Any information you share through our contact form or by
             phone/email — such as your name, phone number, email address and enquiry details — is used

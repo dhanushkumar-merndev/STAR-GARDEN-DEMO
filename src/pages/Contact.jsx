@@ -7,10 +7,15 @@ import useSEO from '../hooks/useSEO'
 import { company, media, services, breadcrumbJsonLd } from '../data/content'
 
 const contactCards = [
-  { icon: 'Phone', label: 'Mobile', value: company.phone, href: `tel:${company.phoneHref}` },
-  { icon: 'PhoneCall', label: 'Landline', value: company.landline, href: `tel:${company.landlineHref}` },
+  { icon: 'Phone', label: 'Phone', value: company.phone, href: `tel:${company.phoneHref}` },
+  {
+    icon: 'WhatsApp',
+    label: 'WhatsApp',
+    value: company.phone,
+    href: `https://wa.me/${company.whatsappHref}`,
+  },
   { icon: 'Mail', label: 'Email', value: company.email, href: `mailto:${company.email}` },
-  { icon: 'ShoppingBag', label: 'Online Store', value: company.storeLabel, href: company.storeUrl },
+  { icon: 'User', label: 'Contact Person', value: company.contactPerson, href: `tel:${company.phoneHref}` },
 ]
 
 const emptyForm = { name: '', phone: '', email: '', service: '', message: '' }

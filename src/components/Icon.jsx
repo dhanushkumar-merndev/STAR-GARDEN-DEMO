@@ -27,7 +27,6 @@ import {
   LuSearch,
   LuSend,
   LuShieldCheck,
-  LuShoppingBag,
   LuSparkles,
   LuSprout,
   LuSun,
@@ -72,7 +71,6 @@ const registry = {
   Search: LuSearch,
   Send: LuSend,
   ShieldCheck: LuShieldCheck,
-  ShoppingBag: LuShoppingBag,
   Sparkles: LuSparkles,
   Sprout: LuSprout,
   Sun: LuSun,
@@ -85,12 +83,17 @@ const registry = {
   X: LuX,
 }
 
+// `size` stays a px number at every call site, but it is applied in rem so icons
+// grow with the root font size on large screens like the rest of the layout.
+// CSS width/height win over the width/height attributes react-icons renders.
 export default function Icon({ name, className = '', size = 24, strokeWidth = 1.75, title }) {
   const Cmp = registry[name] || registry.Leaf
+  const edge = `${size / 16}rem`
   return (
     <Cmp
       className={className}
       size={size}
+      style={{ width: edge, height: edge }}
       strokeWidth={strokeWidth}
       title={title}
       aria-hidden={title ? undefined : 'true'}

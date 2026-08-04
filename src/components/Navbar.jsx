@@ -1,12 +1,28 @@
-import { useEffect, useState } from 'react'
-import { NavLink, Link, useLocation } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import Icon from './Icon'
 import { company, navLinks } from '../data/content'
+
+/**
+ * The most specific nav link matching `path`, or null. Plain NavLink matching
+ * would light up both "Services" and "Landscape Designers" on
+ * /services/landscape-design, since the parent prefix also matches — only the
+ * longest match wins here, so "Services" still highlights on its other children.
+ */
+function activeNavPath(path) {
+  return (
+    navLinks
+      .map((l) => l.to)
+      .filter((to) => (to === '/' ? path === '/' : path === to || path.startsWith(`${to}/`)))
+      .sort((a, b) => b.length - a.length)[0] ?? null
+  )
+}
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const location = useLocation()
+  const active = useMemo(() => activeNavPath(location.pathname), [location.pathname])
 
   useEffect(() => {
     // passive: this listener must never block scrolling, especially under Lenis.
@@ -26,12 +42,15 @@ export default function Navbar() {
   }, [open])
 
   return (
+    // The bar keeps its cream background at every scroll position. Every page opens
+    // on a near-black hero, and a transparent bar rendered the dark-green logo and
+    // the forest-toned links invisible against it.
     <header
-      className={`sticky top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
-        scrolled || open ? 'bg-cream/85 shadow-sm shadow-forest-950/5 backdrop-blur-md' : 'bg-transparent'
+      className={`sticky top-0 z-50 border-b bg-cream/90 backdrop-blur-md transition-[box-shadow,border-color] duration-300 ${
+        scrolled || open ? 'border-forest-100 shadow-sm shadow-forest-950/5' : 'border-transparent'
       }`}
     >
-      <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3.5 lg:px-8">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-2 lg:px-8">
         {/* The logo is a wordmark — it already reads "Star Gardens", so no text beside it. */}
         <Link to="/" className="shrink-0" aria-label={`${company.name} — home`}>
           <img
@@ -39,34 +58,31 @@ export default function Navbar() {
             alt={company.name}
             width={400}
             height={91}
-            className="h-9 w-auto transition-transform duration-300 hover:scale-[1.03] sm:h-11"
+            className="h-8 w-auto transition-transform duration-300 hover:scale-[1.03] sm:h-9"
           />
         </Link>
 
         <div className="hidden items-center gap-0.5 lg:flex">
-          {navLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === '/'}
-              className={({ isActive }) =>
-                `relative rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${
+          {navLinks.map((link) => {
+            const isActive = active === link.to
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                aria-current={isActive ? 'page' : undefined}
+                className={`relative rounded-full px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
                   isActive ? 'text-forest-950' : 'text-forest-700 hover:text-forest-950'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="relative z-10">{link.label}</span>
-                  <span
-                    className={`absolute inset-x-3 bottom-1 h-0.5 origin-left rounded-full bg-gold-400 transition-transform duration-300 ${
-                      isActive ? 'scale-x-100' : 'scale-x-0'
-                    }`}
-                  />
-                </>
-              )}
-            </NavLink>
-          ))}
+                }`}
+              >
+                <span className="relative z-10">{link.label}</span>
+                <span
+                  className={`absolute inset-x-3 bottom-0.5 h-0.5 origin-left rounded-full bg-gold-400 transition-transform duration-300 ${
+                    isActive ? 'scale-x-100' : 'scale-x-0'
+                  }`}
+                />
+              </Link>
+            )
+          })}
         </div>
 
         <div className="hidden items-center gap-2 lg:flex">
@@ -74,14 +90,17 @@ export default function Navbar() {
             href={`https://wa.me/${company.whatsappHref}`}
             target="_blank"
             rel="noreferrer"
-            className="grid h-10 w-10 place-items-center rounded-full border border-forest-200 text-forest-700 transition-colors duration-300 hover:border-gold-400 hover:text-gold-600"
+            className="grid h-9 w-9 place-items-center rounded-full border border-forest-200 text-forest-700 transition-colors duration-300 hover:border-gold-400 hover:text-gold-600"
             aria-label="Chat with Star Gardens on WhatsApp"
           >
-            <Icon name="WhatsApp" size={18} />
+            <Icon name="WhatsApp" size={17} />
           </a>
+          {/* The number itself only fits alongside eight links from xl up; below that
+              the button stays an icon and the floating dock carries the full CTA. */}
           <a
             href={`tel:${company.phoneHref}`}
-            className="group inline-flex items-center gap-2 rounded-full bg-forest-900 px-5 py-2.5 text-sm font-semibold text-cream shadow-sm transition-transform duration-300 hover:-translate-y-0.5"
+            aria-label={`Call ${company.phone}`}
+            className="group inline-flex h-9 items-center gap-2 rounded-full bg-forest-900 px-2.5 text-[0.8125rem] font-semibold text-cream shadow-sm transition-transform duration-300 hover:-translate-y-0.5 xl:px-4"
           >
             <Icon
               name="Phone"
@@ -89,18 +108,18 @@ export default function Navbar() {
               strokeWidth={2}
               className="text-forest-200 transition-colors duration-300 group-hover:text-gold-300"
             />
-            {company.phone}
+            <span className="hidden xl:inline">{company.phone}</span>
           </a>
         </div>
 
         <button
           onClick={() => setOpen((v) => !v)}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-forest-200 text-forest-800 transition-colors duration-300 hover:border-gold-400 hover:text-gold-600 lg:hidden"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-forest-200 text-forest-800 transition-colors duration-300 hover:border-gold-400 hover:text-gold-600 lg:hidden"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
           aria-controls="mobile-nav"
         >
-          <Icon name={open ? 'X' : 'Menu'} size={20} />
+          <Icon name={open ? 'X' : 'Menu'} size={19} />
         </button>
       </nav>
 
@@ -113,18 +132,18 @@ export default function Navbar() {
       >
         <div className="flex min-h-0 flex-col gap-1 overflow-hidden px-5 py-4">
           {navLinks.map((link) => (
-            <NavLink
+            <Link
               key={link.to}
               to={link.to}
-              end={link.to === '/'}
-              className={({ isActive }) =>
-                `rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-forest-900 text-cream' : 'text-forest-800 hover:bg-forest-100'
-                }`
-              }
+              aria-current={active === link.to ? 'page' : undefined}
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+                active === link.to
+                  ? 'bg-forest-900 text-cream'
+                  : 'text-forest-800 hover:bg-forest-100'
+              }`}
             >
               {link.label}
-            </NavLink>
+            </Link>
           ))}
           <div className="mt-2 grid grid-cols-2 gap-2">
             <a

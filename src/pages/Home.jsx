@@ -79,7 +79,7 @@ export default function Home() {
         <LeafSprig className="pointer-events-none absolute bottom-40 left-[10%] -z-10 hidden h-24 w-24 rotate-[30deg] text-forest-300/25 animate-float-slow sm:block" />
 
         <div className="mx-auto flex max-w-4xl flex-col items-center px-5 pb-36 pt-20 text-center sm:px-6 sm:pb-40 sm:pt-28 lg:px-8">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-gold-300 ring-1 ring-inset ring-white/15 backdrop-blur sm:text-[11px]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-gold-300 ring-1 ring-inset ring-white/15 backdrop-blur sm:text-[0.6875rem]">
             <Icon name="Sparkles" size={13} /> Family business · Since {company.founded}
           </span>
 
@@ -88,7 +88,7 @@ export default function Home() {
             <span className="mt-1.5 block text-gold-300">{company.subTagline}</span>
           </h1>
 
-          <p className="mt-6 max-w-xl text-pretty text-[15px] leading-relaxed text-forest-200 sm:text-lg">
+          <p className="mt-6 max-w-xl text-pretty text-[0.9375rem] leading-relaxed text-forest-200 sm:text-lg">
             From landscape design and vertical gardens to plants on hire for corporate offices — Star
             Gardens has been greening Bangalore &amp; Andhra Pradesh with turnkey design, delivery and
             maintenance.
@@ -147,7 +147,7 @@ export default function Home() {
             <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-6 border-t border-forest-100 pt-7">
               {finishedProjects.slice(0, 4).map((p) => (
                 <div key={p.name + p.place}>
-                  <dt className="font-display text-[15px] font-semibold leading-snug text-forest-900">
+                  <dt className="font-display text-[0.9375rem] font-semibold leading-snug text-forest-900">
                     {p.name}
                   </dt>
                   <dd className="mt-1 text-xs text-forest-500">{p.place}</dd>
@@ -206,7 +206,7 @@ export default function Home() {
           eyebrow="Recent Work"
           title="Spaces we've planted, built and kept green"
         />
-        <div className="mt-12 grid auto-rows-[160px] grid-cols-2 gap-3 sm:auto-rows-[200px] sm:grid-cols-4 sm:gap-4 lg:mt-16">
+        <div className="mt-12 grid auto-rows-[10rem] grid-cols-2 gap-3 sm:auto-rows-[12.5rem] sm:grid-cols-4 sm:gap-4 lg:mt-16">
           {showcase.map((item, i) => (
             <Reveal
               key={item.src}
@@ -222,10 +222,10 @@ export default function Home() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-forest-950/80 via-forest-950/10 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
-                <p className="font-display text-[13px] font-semibold leading-tight text-white sm:text-base">
+                <p className="font-display text-[0.8125rem] font-semibold leading-tight text-white sm:text-base">
                   {item.label}
                 </p>
-                <p className="mt-0.5 text-[11px] text-forest-200 sm:text-xs">{item.place}</p>
+                <p className="mt-0.5 text-[0.6875rem] text-forest-200 sm:text-xs">{item.place}</p>
               </div>
             </Reveal>
           ))}
@@ -242,7 +242,7 @@ export default function Home() {
           decoding="async"
           width={1800}
           height={433}
-          className="h-[180px] w-full object-cover sm:h-auto"
+          className="h-[11.25rem] w-full object-cover sm:h-auto"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-forest-950/55 via-transparent to-transparent" />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-5 pb-4 sm:px-6 sm:pb-6 lg:px-8">
@@ -358,7 +358,7 @@ export default function Home() {
                 <Icon name="Trees" size={18} />
               </span>
               <div className="min-w-0">
-                <p className="font-display text-[15px] font-semibold leading-snug text-forest-900">
+                <p className="font-display text-[0.9375rem] font-semibold leading-snug text-forest-900">
                   {m.name}
                 </p>
                 <p className="mt-0.5 text-xs text-forest-500">{m.place}</p>
@@ -393,14 +393,24 @@ export default function Home() {
             <Reveal
               key={p.name}
               delay={(i % 4) * 80}
-              className="rounded-2xl border border-forest-100 bg-white p-5 shadow-sm"
+              className="overflow-hidden rounded-2xl border border-forest-100 bg-white shadow-sm"
             >
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-forest-50 text-forest-700">
-                <Icon name="Leaf" size={18} />
-              </span>
-              <p className="mt-4 font-display text-[15px] font-semibold text-forest-900">{p.name}</p>
-              <p className="mt-0.5 text-xs italic text-forest-400">{p.sci}</p>
-              <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-forest-600">{p.desc}</p>
+              <img
+                src={p.img}
+                alt={p.name}
+                width={600}
+                height={750}
+                loading="lazy"
+                decoding="async"
+                className="aspect-[4/5] w-full object-cover"
+              />
+              <div className="p-5">
+                <p className="font-display text-[0.9375rem] font-semibold text-forest-900">{p.name}</p>
+                <p className="mt-0.5 text-xs italic text-forest-400">{p.sci}</p>
+                <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-forest-600">
+                  {p.desc}
+                </p>
+              </div>
             </Reveal>
           ))}
         </div>

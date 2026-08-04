@@ -20,7 +20,7 @@ export default function BlogCard({ post, index = 0 }) {
             decoding="async"
             className="h-full w-full object-cover transition-transform duration-500 will-change-transform group-hover:scale-105"
           />
-          <span className="absolute left-3 top-3 rounded-full bg-cream/95 px-3 py-1 text-[11px] font-semibold text-forest-700 shadow-sm">
+          <span className="absolute left-3 top-3 rounded-full bg-cream/95 px-3 py-1 text-[0.6875rem] font-semibold text-forest-700 shadow-sm">
             {post.category}
           </span>
         </div>
