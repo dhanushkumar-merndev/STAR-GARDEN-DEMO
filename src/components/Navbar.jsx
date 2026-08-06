@@ -123,48 +123,58 @@ export default function Navbar() {
         </button>
       </nav>
 
-      {/* 0fr→1fr grid rows animate to the content's natural height with no measuring. */}
+      {/* 0fr→1fr grid rows animate to the content's natural height with no measuring.
+          Absolute, anchored under the bar: the header is sticky, so it stays in flow —
+          an in-flow panel would grow the header and shove the whole page down as it
+          opens. Out of flow it drapes over the hero and the bar keeps its 53px. */}
       <div
         id="mobile-nav"
-        className={`grid overflow-hidden border-forest-100 bg-cream/95 backdrop-blur-md transition-[grid-template-rows,opacity] duration-300 ease-out lg:hidden ${
+        className={`absolute inset-x-0 top-full grid max-h-[calc(100svh_-_100%)] overflow-hidden border-forest-100 bg-cream/95 backdrop-blur-md transition-[grid-template-rows,opacity] duration-300 ease-out lg:hidden ${
           open ? 'grid-rows-[1fr] border-t opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
       >
-        <div className="flex min-h-0 flex-col gap-1 overflow-hidden px-5 py-4">
-          {navLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              aria-current={active === link.to ? 'page' : undefined}
-              className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
-                active === link.to
-                  ? 'bg-forest-900 text-cream'
-                  : 'text-forest-800 hover:bg-forest-100'
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <a
-              href={`tel:${company.phoneHref}`}
-              className="group inline-flex items-center justify-center gap-2 rounded-full bg-forest-900 px-4 py-3 text-sm font-semibold text-cream"
-            >
-              <Icon
-                name="Phone"
-                size={15}
-                className="text-forest-200 transition-colors duration-300 group-hover:text-gold-300"
-              />
-              Call
-            </a>
-            <a
-              href={`https://wa.me/${company.whatsappHref}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-gold-400 px-4 py-3 text-sm font-semibold text-forest-950"
-            >
-              <Icon name="WhatsApp" size={16} /> WhatsApp
-            </a>
+        {/* The collapsing row must carry no padding of its own: under border-box its
+            height can never fall below its own padding, so a py-* here would leave a
+            permanent band of cream under the bar. Padding lives on the inner div.
+            data-lenis-prevent keeps Lenis from stealing the wheel/touch scroll here and
+            panning the page instead, on the short viewports where this actually scrolls. */}
+        <div className="min-h-0 overflow-y-auto overscroll-contain" data-lenis-prevent>
+          <div className="flex flex-col gap-1 px-5 py-4">
+            {navLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                aria-current={active === link.to ? 'page' : undefined}
+                className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+                  active === link.to
+                    ? 'bg-forest-900 text-cream'
+                    : 'text-forest-800 hover:bg-forest-100'
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <a
+                href={`tel:${company.phoneHref}`}
+                className="group inline-flex items-center justify-center gap-2 rounded-full bg-forest-900 px-4 py-3 text-sm font-semibold text-cream"
+              >
+                <Icon
+                  name="Phone"
+                  size={15}
+                  className="text-forest-200 transition-colors duration-300 group-hover:text-gold-300"
+                />
+                Call
+              </a>
+              <a
+                href={`https://wa.me/${company.whatsappHref}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-gold-400 px-4 py-3 text-sm font-semibold text-forest-950"
+              >
+                <Icon name="WhatsApp" size={16} /> WhatsApp
+              </a>
+            </div>
           </div>
         </div>
       </div>
