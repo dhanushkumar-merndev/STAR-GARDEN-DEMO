@@ -10,6 +10,11 @@ dist
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
+supabase/functions/.env
+
+# Supabase CLI link/cache state is machine-specific.
+supabase/.temp/
 
 .vercel
 *.tsbuildinfo

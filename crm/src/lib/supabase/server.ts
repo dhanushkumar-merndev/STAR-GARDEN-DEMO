@@ -15,11 +15,20 @@ import type { Database } from '@/types/database';
  * `createAdminClient()` only in the narrow system cases documented there.
  */
 export async function createClient() {
-  const { url, anonKey } = getSupabasePublicEnv();
+  // `cookies()` is awaited FIRST, before any env validation. Reading cookies is
+  // what tells Next.js this render is dynamic; throwing a missing-env error
+  // ahead of it would fail the build's prerender pass instead of deferring to
+  // request time, which is exactly what must not happen while credentials are
+  // still being filled in.
   const cookieStore = await cookies();
+  const { url, anonKey } = getSupabasePublicEnv();
 
   return createServerClient<Database>(url, anonKey, {
     cookies: {
+      // We authorize with getUser(), so persisting the full user object in
+      // every cookie is unnecessary. Tokens-only keeps Google OAuth cookies
+      // comfortably below common proxy/header limits.
+      encode: 'tokens-only',
       getAll() {
         return cookieStore.getAll();
       },

@@ -3,10 +3,16 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/types/database';
 
 /** Routes reachable without a session. Everything else requires sign-in. */
-const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/auth/callback'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/forgot-password',
+  '/reset-password',
+  '/auth/callback',
+  '/manifest.webmanifest',
+];
 
 /** API routes that authenticate by their own means (signature, secret, CORS). */
-const SELF_AUTHENTICATING_API = ['/api/meta/webhook', '/api/public/', '/api/cron/', '/api/health'];
+const SELF_AUTHENTICATING_API = ['/api/public/', '/api/cron/', '/api/health'];
 
 function isPublicPath(pathname: string): boolean {
   return (
@@ -35,6 +41,10 @@ export async function updateSession(request: NextRequest) {
 
   const supabase = createServerClient<Database>(url, anonKey, {
     cookies: {
+      // Must match the Route Handler/Server Component client. The application
+      // always calls getUser() for verified identity, so the larger serialized
+      // user object does not need to travel in the session cookie.
+      encode: 'tokens-only',
       getAll() {
         return request.cookies.getAll();
       },
@@ -62,15 +72,26 @@ export async function updateSession(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
     redirectUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithCookies(redirectUrl, response);
   }
 
-  if (user && (pathname === '/login' || pathname === '/')) {
+  // Do not redirect an authenticated visitor away from /login here. Google
+  // authentication does not imply CRM authorization: the login page must be
+  // allowed to render NO_PROFILE/DEACTIVATED and offer sign-out. Active users
+  // are redirected by LoginPage after its database profile check.
+  if (user && pathname === '/') {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/dashboard';
     redirectUrl.search = '';
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithCookies(redirectUrl, response);
   }
 
   return response;
+}
+
+/** A new redirect response must retain any refresh/cleanup cookies Supabase set. */
+function redirectWithCookies(url: URL, source: NextResponse): NextResponse {
+  const redirect = NextResponse.redirect(url);
+  for (const cookie of source.cookies.getAll()) redirect.cookies.set(cookie);
+  return redirect;
 }

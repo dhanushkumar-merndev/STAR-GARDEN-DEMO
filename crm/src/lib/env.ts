@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 /**
  * Environment access.
  *
@@ -128,48 +130,18 @@ export function isTigrisConfigured(): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Meta Lead Ads                                                               */
-/* -------------------------------------------------------------------------- */
-
-export interface MetaEnv {
-  appSecret: string;
-  verifyToken: string;
-  pageAccessToken: string;
-  graphVersion: string;
-  allowedPageIds: string[];
-}
-
-export function getMetaEnv(): MetaEnv {
-  const [appSecret, verifyToken, pageAccessToken] = require_(
-    ['META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN', 'META_PAGE_ACCESS_TOKEN'],
-    'Meta Lead Ads',
-  );
-
-  return {
-    appSecret: appSecret!,
-    verifyToken: verifyToken!,
-    pageAccessToken: pageAccessToken!,
-    graphVersion: read('META_GRAPH_API_VERSION') ?? 'v21.0',
-    allowedPageIds: (read('META_ALLOWED_PAGE_IDS') ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  };
-}
-
-export function isMetaConfigured(): boolean {
-  return Boolean(
-    read('META_APP_SECRET') && read('META_WEBHOOK_VERIFY_TOKEN') && read('META_PAGE_ACCESS_TOKEN'),
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /* Cron, uploads, public form                                                  */
 /* -------------------------------------------------------------------------- */
 
 export function getCronSecret(): string {
-  const [secret] = require_(['CRON_SECRET'], 'Reminder cron');
-  return secret!;
+  const dedicated = read('CRON_SECRET');
+  if (dedicated) return dedicated;
+
+  // A dedicated value is optional. Deriving a one-way token avoids sending the
+  // service-role key itself across the Supabase Cron -> application request,
+  // while still keeping the route closed when CRON_SECRET was not provisioned.
+  const [serviceRoleKey] = require_(['SUPABASE_SERVICE_ROLE_KEY'], 'Reminder cron');
+  return createHash('sha256').update(serviceRoleKey!).digest('hex');
 }
 
 export const uploadEnv = {
@@ -177,6 +149,22 @@ export const uploadEnv = {
     return readInt('MAX_UPLOAD_SIZE_MB', 50);
   },
 };
+
+/**
+ * HMAC key for the signed upload token that carries the server's validation
+ * decision from `/api/uploads/presign` to `/api/uploads/finalize`.
+ *
+ * Falls back to the service-role key so there is one fewer variable to set on
+ * day one. Both are server-only and never reach the browser; set the dedicated
+ * variable if you would rather rotate this independently of the database key.
+ */
+export function getUploadTokenSecret(): string {
+  const dedicated = read('UPLOAD_TOKEN_SECRET');
+  if (dedicated) return dedicated;
+
+  const [serviceRoleKey] = require_(['SUPABASE_SERVICE_ROLE_KEY'], 'Upload token signing');
+  return serviceRoleKey!;
+}
 
 export const publicFormEnv = {
   get allowedOrigins(): string[] {

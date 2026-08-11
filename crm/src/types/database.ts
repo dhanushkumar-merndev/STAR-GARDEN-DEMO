@@ -101,7 +101,15 @@ export type FileCategory =
   | 'COMPLETION_EVIDENCE'
   | 'LEAD_ATTACHMENT';
 
-export type WebhookProcessingStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'IGNORED';
+export type WebhookProcessingStatus =
+  | 'PENDING'
+  | 'RECEIVED'
+  | 'PROCESSING'
+  | 'PROCESSED'
+  /** Arrived from a form with no active field mapping. Retryable, never lost. */
+  | 'UNMAPPED_FORM'
+  | 'FAILED'
+  | 'IGNORED';
 
 export type NotificationType =
   | 'LEAD_ASSIGNED'
@@ -127,19 +135,36 @@ export type NotificationType =
 /* Row shapes                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export interface ProfileRow {
+export type ProfileRow = {
   id: string;
   full_name: string;
   email: string | null;
   mobile: string | null;
+  avatar_url: string | null;
   role: UserRole;
   is_active: boolean;
+  approved_at: string | null;
+  approved_by: string | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface LeadRow {
+/** Allowlist of Google addresses permitted to sign in (migration 06). */
+export type StaffInviteRow = {
+  id: string;
+  email: string;
+  full_name: string;
+  mobile: string | null;
+  role: UserRole;
+  accepted_at: string | null;
+  accepted_by: string | null;
+  invited_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LeadRow = {
   id: string;
   lead_code: string;
   customer_name: string;
@@ -154,6 +179,12 @@ export interface LeadRow {
   meta_page_id: string | null;
   meta_form_id: string | null;
   meta_lead_id: string | null;
+  meta_campaign_id: string | null;
+  meta_campaign_name: string | null;
+  meta_adset_id: string | null;
+  meta_adset_name: string | null;
+  meta_ad_id: string | null;
+  meta_ad_name: string | null;
   status: LeadStatus;
   assigned_bdm_id: string | null;
   design_required: boolean;
@@ -165,7 +196,7 @@ export interface LeadRow {
   updated_at: string;
 }
 
-export interface LeadAssignmentHistoryRow {
+export type LeadAssignmentHistoryRow = {
   id: string;
   lead_id: string;
   from_user_id: string | null;
@@ -175,7 +206,7 @@ export interface LeadAssignmentHistoryRow {
   created_at: string;
 }
 
-export interface ActivityRow {
+export type ActivityRow = {
   id: string;
   lead_id: string;
   type: ActivityType;
@@ -188,7 +219,7 @@ export interface ActivityRow {
   updated_at: string;
 }
 
-export interface FollowUpRow {
+export type FollowUpRow = {
   id: string;
   lead_id: string;
   assigned_to: string | null;
@@ -203,7 +234,7 @@ export interface FollowUpRow {
   updated_at: string;
 }
 
-export interface SiteVisitRow {
+export type SiteVisitRow = {
   id: string;
   lead_id: string;
   scheduled_start_at: string;
@@ -227,7 +258,7 @@ export interface SiteVisitRow {
   updated_at: string;
 }
 
-export interface SiteVisitAttendeeRow {
+export type SiteVisitAttendeeRow = {
   id: string;
   site_visit_id: string;
   user_id: string;
@@ -235,7 +266,7 @@ export interface SiteVisitAttendeeRow {
   created_at: string;
 }
 
-export interface DesignProjectRow {
+export type DesignProjectRow = {
   id: string;
   lead_id: string;
   assigned_designer_id: string | null;
@@ -250,7 +281,7 @@ export interface DesignProjectRow {
   updated_at: string;
 }
 
-export interface DesignVersionRow {
+export type DesignVersionRow = {
   id: string;
   design_project_id: string;
   version_number: number;
@@ -266,7 +297,7 @@ export interface DesignVersionRow {
   updated_at: string;
 }
 
-export interface ExecutionProjectRow {
+export type ExecutionProjectRow = {
   id: string;
   lead_id: string;
   design_project_id: string | null;
@@ -284,7 +315,7 @@ export interface ExecutionProjectRow {
   updated_at: string;
 }
 
-export interface ExecutionAssigneeRow {
+export type ExecutionAssigneeRow = {
   id: string;
   execution_project_id: string;
   user_id: string;
@@ -292,7 +323,7 @@ export interface ExecutionAssigneeRow {
   created_at: string;
 }
 
-export interface ExecutionTaskRow {
+export type ExecutionTaskRow = {
   id: string;
   execution_project_id: string;
   title: string;
@@ -310,7 +341,7 @@ export interface ExecutionTaskRow {
   updated_at: string;
 }
 
-export interface FileRow {
+export type FileRow = {
   id: string;
   category: FileCategory;
   object_key: string;
@@ -333,7 +364,7 @@ export interface FileRow {
   updated_at: string;
 }
 
-export interface FileAccessLogRow {
+export type FileAccessLogRow = {
   id: string;
   file_id: string;
   user_id: string | null;
@@ -343,7 +374,7 @@ export interface FileAccessLogRow {
   created_at: string;
 }
 
-export interface NotificationRow {
+export type NotificationRow = {
   id: string;
   user_id: string;
   type: NotificationType;
@@ -355,7 +386,7 @@ export interface NotificationRow {
   created_at: string;
 }
 
-export interface AuditLogRow {
+export type AuditLogRow = {
   id: string;
   actor_user_id: string | null;
   action: string;
@@ -368,7 +399,7 @@ export interface AuditLogRow {
   created_at: string;
 }
 
-export interface MetaWebhookEventRow {
+export type MetaWebhookEventRow = {
   id: string;
   provider_event_id: string;
   page_id: string | null;
@@ -379,10 +410,12 @@ export interface MetaWebhookEventRow {
   last_error: string | null;
   lead_id: string | null;
   processed_at: string | null;
+  form_name: string | null;
+  last_attempt_at: string | null;
   created_at: string;
 }
 
-export interface AppSettingRow {
+export type AppSettingRow = {
   key: string;
   value: Json;
   description: string | null;
@@ -390,7 +423,7 @@ export interface AppSettingRow {
   updated_at: string;
 }
 
-export interface ConfigOptionRow {
+export type ConfigOptionRow = {
   id: string;
   group_key: string;
   value: string;
@@ -401,7 +434,7 @@ export interface ConfigOptionRow {
   updated_at: string;
 }
 
-export interface ExecutionTaskTemplateRow {
+export type ExecutionTaskTemplateRow = {
   id: string;
   title: string;
   description: string | null;
@@ -412,7 +445,125 @@ export interface ExecutionTaskTemplateRow {
   updated_at: string;
 }
 
-export interface RateLimitHitRow {
+/* -------------------------------------------------------------------------- */
+/* Meta integration — mirror of 20260810120700 / 20260810120900               */
+/* -------------------------------------------------------------------------- */
+
+/** Where a Meta lead-form answer lands. Never call notes or follow-ups. */
+export type MetaCrmField =
+  | 'customer_name'
+  | 'mobile'
+  | 'email'
+  | 'location_text'
+  | 'requirement_summary'
+  | 'IGNORE';
+
+export type MetaSyncType = 'CAMPAIGNS' | 'INSIGHTS' | 'WEBHOOK_REPLAY';
+export type MetaSyncStatus = 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED';
+export type MetaSyncTrigger = 'CRON' | 'ADMIN_MANUAL';
+export type MetaAssociationSource = 'ADS_GRAPH' | 'WEBHOOK' | 'MANUAL';
+
+export type MetaCampaignRow = {
+  id: string;
+  meta_campaign_id: string;
+  name: string;
+  configured_status: string | null;
+  effective_status: string | null;
+  objective: string | null;
+  is_present_in_latest_sync: boolean;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One question on a Meta lead form, as cached on `meta_lead_forms.questions`. */
+export type MetaFormQuestion = {
+  key: string;
+  label: string;
+  type?: string;
+};
+
+export type MetaLeadFormRow = {
+  id: string;
+  meta_form_id: string;
+  meta_page_id: string | null;
+  name: string;
+  status: string | null;
+  questions: Json;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MetaCampaignFormRow = {
+  id: string;
+  campaign_id: string;
+  form_id: string;
+  association_source: MetaAssociationSource;
+  first_seen_at: string;
+  last_seen_at: string;
+};
+
+export type MetaFieldMappingRow = {
+  id: string;
+  meta_form_id: string;
+  meta_field_key: string;
+  meta_field_label: string | null;
+  crm_field: MetaCrmField;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MetaCampaignDailyInsightRow = {
+  id: string;
+  meta_campaign_id: string;
+  insight_date: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  leads: number;
+  /** Null when there were no leads — never zero, never infinity. */
+  cost_per_lead: number | null;
+  last_synced_at: string;
+  created_at: string;
+};
+
+export type MetaSyncRunRow = {
+  id: string;
+  sync_type: MetaSyncType;
+  status: MetaSyncStatus;
+  trigger_type: MetaSyncTrigger;
+  triggered_by: string | null;
+  started_at: string;
+  completed_at: string | null;
+  records_received: number;
+  records_created: number;
+  records_updated: number;
+  error_summary: string | null;
+};
+
+export type EmailLogStatus = 'PENDING' | 'SENT' | 'FAILED';
+
+/** Delivery record for outbound email. Never holds credentials or bodies. */
+export type EmailLogRow = {
+  id: string;
+  recipient: string;
+  email_type: string;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  subject: string;
+  status: EmailLogStatus;
+  provider_message_id: string | null;
+  error_summary: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+export type RateLimitHitRow = {
   id: number;
   bucket: string;
   identifier: string;
@@ -427,28 +578,216 @@ export interface RateLimitHitRow {
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required>>;
 
-type Table<Row, Required extends keyof Row> = {
+/**
+ * One foreign key, in the shape PostgREST's type resolver expects.
+ *
+ * These are what make `select('*, owner:profiles!leads_assigned_bdm_id_fkey(...)')`
+ * resolve to a real type instead of an error. Each entry mirrors a constraint
+ * in `supabase/migrations/*.sql`; `npm run db:types` regenerates the canonical
+ * version once the project is linked.
+ */
+type Rel<
+  Name extends string,
+  Columns extends string[],
+  Referenced extends string,
+  ReferencedColumns extends string[],
+> = {
+  foreignKeyName: Name;
+  columns: Columns;
+  isOneToOne: false;
+  referencedRelation: Referenced;
+  referencedColumns: ReferencedColumns;
+};
+
+/** Shorthand for the overwhelmingly common `<col> -> profiles.id` case. */
+type ProfileRel<Name extends string, Column extends string> = Rel<
+  Name,
+  [Column],
+  'profiles',
+  ['id']
+>;
+
+/** Shorthand for `<col> -> leads.id`. */
+type LeadRel<Name extends string, Column extends string> = Rel<Name, [Column], 'leads', ['id']>;
+
+type Table<
+  Row,
+  Required extends keyof Row,
+  Relationships extends {
+    foreignKeyName: string;
+    columns: string[];
+    isOneToOne: false;
+    referencedRelation: string;
+    referencedColumns: string[];
+  }[] = [],
+> = {
   Row: Row;
   Insert: Insertable<Row, Required>;
   Update: Partial<Row>;
-  Relationships: [];
+  Relationships: Relationships;
 };
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
-      profiles: Table<ProfileRow, 'id' | 'full_name'>;
-      leads: Table<LeadRow, 'customer_name' | 'mobile_normalized'>;
-      lead_assignment_history: Table<LeadAssignmentHistoryRow, 'lead_id'>;
-      activities: Table<ActivityRow, 'lead_id' | 'type'>;
-      follow_ups: Table<FollowUpRow, 'lead_id' | 'title' | 'due_at'>;
-      site_visits: Table<SiteVisitRow, 'lead_id' | 'scheduled_start_at'>;
-      site_visit_attendees: Table<SiteVisitAttendeeRow, 'site_visit_id' | 'user_id'>;
-      design_projects: Table<DesignProjectRow, 'lead_id'>;
-      design_versions: Table<DesignVersionRow, 'design_project_id' | 'file_id'>;
-      execution_projects: Table<ExecutionProjectRow, 'lead_id' | 'approved_design_version_id'>;
-      execution_assignees: Table<ExecutionAssigneeRow, 'execution_project_id' | 'user_id'>;
-      execution_tasks: Table<ExecutionTaskRow, 'execution_project_id' | 'title'>;
+      profiles: Table<
+        ProfileRow,
+        'id' | 'full_name',
+        [ProfileRel<'profiles_approved_by_fkey', 'approved_by'>]
+      >;
+
+      staff_invites: Table<
+        StaffInviteRow,
+        'email' | 'full_name',
+        [
+          ProfileRel<'staff_invites_accepted_by_fkey', 'accepted_by'>,
+          ProfileRel<'staff_invites_invited_by_fkey', 'invited_by'>,
+        ]
+      >;
+
+      leads: Table<
+        LeadRow,
+        'customer_name' | 'mobile_normalized',
+        [
+          ProfileRel<'leads_assigned_bdm_id_fkey', 'assigned_bdm_id'>,
+          ProfileRel<'leads_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
+      lead_assignment_history: Table<
+        LeadAssignmentHistoryRow,
+        'lead_id',
+        [
+          LeadRel<'lead_assignment_history_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'lead_assignment_history_from_user_id_fkey', 'from_user_id'>,
+          ProfileRel<'lead_assignment_history_to_user_id_fkey', 'to_user_id'>,
+          ProfileRel<'lead_assignment_history_changed_by_fkey', 'changed_by'>,
+        ]
+      >;
+
+      activities: Table<
+        ActivityRow,
+        'lead_id' | 'type',
+        [
+          LeadRel<'activities_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'activities_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
+      follow_ups: Table<
+        FollowUpRow,
+        'lead_id' | 'title' | 'due_at',
+        [
+          LeadRel<'follow_ups_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'follow_ups_assigned_to_fkey', 'assigned_to'>,
+          ProfileRel<'follow_ups_completed_by_fkey', 'completed_by'>,
+          ProfileRel<'follow_ups_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
+      site_visits: Table<
+        SiteVisitRow,
+        'lead_id' | 'scheduled_start_at',
+        [
+          LeadRel<'site_visits_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'site_visits_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
+      site_visit_attendees: Table<
+        SiteVisitAttendeeRow,
+        'site_visit_id' | 'user_id',
+        [
+          Rel<'site_visit_attendees_site_visit_id_fkey', ['site_visit_id'], 'site_visits', ['id']>,
+          ProfileRel<'site_visit_attendees_user_id_fkey', 'user_id'>,
+        ]
+      >;
+
+      design_projects: Table<
+        DesignProjectRow,
+        'lead_id',
+        [
+          LeadRel<'design_projects_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'design_projects_assigned_designer_id_fkey', 'assigned_designer_id'>,
+          ProfileRel<'design_projects_approved_by_fkey', 'approved_by'>,
+          ProfileRel<'design_projects_created_by_fkey', 'created_by'>,
+          Rel<
+            'design_projects_approved_version_fkey',
+            ['approved_version_id'],
+            'design_versions',
+            ['id']
+          >,
+        ]
+      >;
+
+      design_versions: Table<
+        DesignVersionRow,
+        'design_project_id' | 'file_id',
+        [
+          Rel<
+            'design_versions_design_project_id_fkey',
+            ['design_project_id'],
+            'design_projects',
+            ['id']
+          >,
+          Rel<'design_versions_file_fkey', ['file_id'], 'files', ['id']>,
+          ProfileRel<'design_versions_uploaded_by_fkey', 'uploaded_by'>,
+          ProfileRel<'design_versions_reviewed_by_fkey', 'reviewed_by'>,
+        ]
+      >;
+
+      execution_projects: Table<
+        ExecutionProjectRow,
+        'lead_id' | 'approved_design_version_id',
+        [
+          LeadRel<'execution_projects_lead_id_fkey', 'lead_id'>,
+          Rel<
+            'execution_projects_design_project_id_fkey',
+            ['design_project_id'],
+            'design_projects',
+            ['id']
+          >,
+          Rel<
+            'execution_projects_approved_design_version_id_fkey',
+            ['approved_design_version_id'],
+            'design_versions',
+            ['id']
+          >,
+          ProfileRel<'execution_projects_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
+      execution_assignees: Table<
+        ExecutionAssigneeRow,
+        'execution_project_id' | 'user_id',
+        [
+          Rel<
+            'execution_assignees_execution_project_id_fkey',
+            ['execution_project_id'],
+            'execution_projects',
+            ['id']
+          >,
+          ProfileRel<'execution_assignees_user_id_fkey', 'user_id'>,
+          ProfileRel<'execution_assignees_assigned_by_fkey', 'assigned_by'>,
+        ]
+      >;
+
+      execution_tasks: Table<
+        ExecutionTaskRow,
+        'execution_project_id' | 'title',
+        [
+          Rel<
+            'execution_tasks_execution_project_id_fkey',
+            ['execution_project_id'],
+            'execution_projects',
+            ['id']
+          >,
+          ProfileRel<'execution_tasks_assigned_to_fkey', 'assigned_to'>,
+          ProfileRel<'execution_tasks_completed_by_fkey', 'completed_by'>,
+          ProfileRel<'execution_tasks_created_by_fkey', 'created_by'>,
+        ]
+      >;
+
       files: Table<
         FileRow,
         | 'category'
@@ -457,19 +796,149 @@ export interface Database {
         | 'safe_filename'
         | 'mime_type'
         | 'extension'
-        | 'size_bytes'
+        | 'size_bytes',
+        [
+          LeadRel<'files_lead_id_fkey', 'lead_id'>,
+          Rel<'files_site_visit_id_fkey', ['site_visit_id'], 'site_visits', ['id']>,
+          Rel<'files_design_project_id_fkey', ['design_project_id'], 'design_projects', ['id']>,
+          Rel<
+            'files_execution_project_id_fkey',
+            ['execution_project_id'],
+            'execution_projects',
+            ['id']
+          >,
+          Rel<'files_execution_task_id_fkey', ['execution_task_id'], 'execution_tasks', ['id']>,
+          ProfileRel<'files_uploaded_by_fkey', 'uploaded_by'>,
+          ProfileRel<'files_archived_by_fkey', 'archived_by'>,
+        ]
       >;
-      file_access_logs: Table<FileAccessLogRow, 'file_id' | 'action'>;
-      notifications: Table<NotificationRow, 'user_id' | 'type' | 'title'>;
-      audit_logs: Table<AuditLogRow, 'action' | 'entity_type'>;
-      meta_webhook_events: Table<MetaWebhookEventRow, 'provider_event_id' | 'payload'>;
-      app_settings: Table<AppSettingRow, 'key' | 'value'>;
+
+      file_access_logs: Table<
+        FileAccessLogRow,
+        'file_id' | 'action',
+        [
+          Rel<'file_access_logs_file_id_fkey', ['file_id'], 'files', ['id']>,
+          ProfileRel<'file_access_logs_user_id_fkey', 'user_id'>,
+        ]
+      >;
+
+      notifications: Table<
+        NotificationRow,
+        'user_id' | 'type' | 'title',
+        [ProfileRel<'notifications_user_id_fkey', 'user_id'>]
+      >;
+
+      audit_logs: Table<
+        AuditLogRow,
+        'action' | 'entity_type',
+        [ProfileRel<'audit_logs_actor_user_id_fkey', 'actor_user_id'>]
+      >;
+
+      meta_webhook_events: Table<
+        MetaWebhookEventRow,
+        'provider_event_id' | 'payload',
+        [LeadRel<'meta_webhook_events_lead_id_fkey', 'lead_id'>]
+      >;
+
+      app_settings: Table<
+        AppSettingRow,
+        'key' | 'value',
+        [ProfileRel<'app_settings_updated_by_fkey', 'updated_by'>]
+      >;
+
+      email_logs: Table<EmailLogRow, 'recipient' | 'email_type' | 'subject'>;
+
+      meta_campaigns: Table<MetaCampaignRow, 'meta_campaign_id' | 'name'>;
+      meta_lead_forms: Table<MetaLeadFormRow, 'meta_form_id' | 'name'>;
+      meta_campaign_forms: Table<
+        MetaCampaignFormRow,
+        'campaign_id' | 'form_id',
+        [
+          Rel<'meta_campaign_forms_campaign_id_fkey', ['campaign_id'], 'meta_campaigns', ['id']>,
+          Rel<'meta_campaign_forms_form_id_fkey', ['form_id'], 'meta_lead_forms', ['id']>,
+        ]
+      >;
+      meta_field_mappings: Table<
+        MetaFieldMappingRow,
+        'meta_form_id' | 'meta_field_key' | 'crm_field',
+        [
+          ProfileRel<'meta_field_mappings_created_by_fkey', 'created_by'>,
+          ProfileRel<'meta_field_mappings_updated_by_fkey', 'updated_by'>,
+        ]
+      >;
+      meta_campaign_daily_insights: Table<
+        MetaCampaignDailyInsightRow,
+        'meta_campaign_id' | 'insight_date'
+      >;
+      meta_sync_runs: Table<
+        MetaSyncRunRow,
+        'sync_type',
+        [ProfileRel<'meta_sync_runs_triggered_by_fkey', 'triggered_by'>]
+      >;
       config_options: Table<ConfigOptionRow, 'group_key' | 'value' | 'label'>;
       execution_task_templates: Table<ExecutionTaskTemplateRow, 'title'>;
       rate_limit_hits: Table<RateLimitHitRow, 'bucket' | 'identifier'>;
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      record_sign_in: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      /** Transactional operations — see migration 07. */
+      assign_lead: {
+        Args: { p_lead_id: string; p_to_user_id: string; p_reason?: string | null };
+        Returns: LeadRow;
+      };
+      change_lead_status: {
+        Args: {
+          p_lead_id: string;
+          p_status: LeadStatus;
+          p_lost_reason?: string | null;
+          p_note?: string | null;
+        };
+        Returns: LeadRow;
+      };
+      approve_design_version: {
+        Args: { p_version_id: string; p_note?: string | null };
+        Returns: DesignVersionRow;
+      };
+      request_design_revision: {
+        Args: { p_version_id: string; p_notes: string };
+        Returns: DesignVersionRow;
+      };
+      create_execution_project: {
+        Args: {
+          p_lead_id: string;
+          p_approved_design_version_id: string;
+          p_title?: string | null;
+          p_planned_start_at?: string | null;
+          p_due_at?: string | null;
+          p_assignee_ids?: string[];
+          p_use_template?: boolean;
+        };
+        Returns: ExecutionProjectRow;
+      };
+      complete_follow_up: {
+        Args: { p_follow_up_id: string; p_notes?: string | null };
+        Returns: FollowUpRow;
+      };
+      /** True when a form has both a name and a mobile destination mapped. */
+      meta_form_mapping_is_complete: {
+        Args: { p_meta_form_id: string };
+        Returns: boolean;
+      };
+      /** Atomically replaces every mapping row for one Meta form. */
+      replace_meta_form_mapping: {
+        Args: { p_meta_form_id: string; p_entries: Json; p_is_active?: boolean };
+        Returns: undefined;
+      };
+      /** Seconds remaining before another manual sync of this type is allowed. */
+      meta_sync_cooldown_remaining: {
+        Args: { p_sync_type: MetaSyncType; p_cooldown_seconds?: number };
+        Returns: number;
+      };
+    };
     Enums: {
       user_role: UserRole;
       lead_source: LeadSource;
@@ -485,7 +954,13 @@ export interface Database {
       file_category: FileCategory;
       webhook_processing_status: WebhookProcessingStatus;
       notification_type: NotificationType;
+      email_log_status: EmailLogStatus;
+      meta_crm_field: MetaCrmField;
+      meta_sync_type: MetaSyncType;
+      meta_sync_status: MetaSyncStatus;
+      meta_sync_trigger: MetaSyncTrigger;
+      meta_association_source: MetaAssociationSource;
     };
     CompositeTypes: Record<never, never>;
   };
-}
+};

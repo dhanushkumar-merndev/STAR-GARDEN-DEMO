@@ -20,17 +20,14 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  // The repository root also holds the marketing SPA and its own lockfile, so
+  // Next.js has to be told which directory this app actually lives in.
+  outputFileTracingRoot: __dirname,
+
   // Uploaded files are never served from Next.js — they live in a private Tigris
   // bucket and are reached only through short-lived presigned URLs (§4.3).
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**.storage.tigris.dev' }],
-  },
-
-  experimental: {
-    serverActions: {
-      // Server Actions receive form posts only; large binaries go straight to Tigris.
-      bodySizeLimit: '2mb',
-    },
   },
 
   async headers() {

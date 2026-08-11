@@ -436,7 +436,12 @@ create index notifications_unread_idx on public.notifications (user_id) where re
 
 -- Reminder jobs must stay idempotent across cron runs (§13).
 create unique index notifications_dedupe_key
-  on public.notifications (user_id, type, entity_id, (created_at::date))
+  on public.notifications (
+    user_id,
+    type,
+    entity_id,
+    ((created_at at time zone 'UTC')::date)
+  )
   where entity_id is not null;
 
 -- ---------------------------------------------------------------------------
