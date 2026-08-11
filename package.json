@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:seed": "pnpm --dir crm dev:seed",
+    "dev:unseed": "pnpm --dir crm dev:unseed",
     "sitemap": "node scripts/generate-sitemap.mjs",
     "build": "node scripts/generate-sitemap.mjs && vite build",
     "lint": "oxlint",

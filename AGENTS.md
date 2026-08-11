@@ -1,8 +1,8 @@
-# AGENTS.md — Star Garden CRM
+# AGENTS.md — Star Gardens CRM
 
 ## 1. Purpose
 
-Build a simple, production-ready, mobile-first internal CRM for **Star Garden**.
+Build a simple, production-ready, mobile-first internal CRM for **Star Gardens**.
 
 The system must manage the complete operational flow:
 
@@ -48,7 +48,7 @@ This is an internal staff CRM. It is not a customer portal and it is not a multi
 - Manual call outcome entry.
 - Follow-up tasks and reminders.
 - Site-visit scheduling and visit notes.
-- Optional one-time location capture during check-in/check-out.
+- Required one-time location capture when staff start a journey, check in, or check out.
 - Designer assignment and in-app notifications.
 - Private design-file upload, version history, preview, and download.
 - Design review, revision, and approval workflow.
@@ -370,7 +370,7 @@ Required fields:
 - Requirement summary.
 - Photos/attachments when permitted.
 - Check-in/check-out timestamps.
-- Optional single check-in/check-out coordinates after explicit browser permission.
+- Required single start/check-in/check-out coordinates after explicit browser permission; the action cannot continue if permission is denied.
 
 Do not perform continuous location tracking. Do not collect location when the user has not actively checked in or shared it.
 
@@ -1146,4 +1146,4 @@ Next.js responsive CRM
         |-- tel: link: calls through the employee's normal SIM
 ```
 
-This is the final MVP baseline for Star Garden CRM.
+This is the final MVP baseline for Star Gardens CRM.

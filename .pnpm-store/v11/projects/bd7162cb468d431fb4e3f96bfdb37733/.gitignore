@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+build
+dist
+
+# Env — never commit real secrets. Only .env.example is tracked.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+supabase/functions/.env
+
+# Supabase CLI link/cache state is machine-specific.
+supabase/.temp/
+
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+coverage
+.DS_Store
