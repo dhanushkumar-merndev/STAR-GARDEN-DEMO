@@ -181,6 +181,7 @@ export default async function ExecutionProjectPage({
           <CardHeader title="Update project status" />
           <CardBody>
             <ExecutionStatusControls
+              key={project.status}
               projectId={project.id}
               currentStatus={project.status}
               outstandingMandatory={outstandingMandatory}
@@ -196,11 +197,16 @@ export default async function ExecutionProjectPage({
           <FileList files={files} canArchive={canUpdate} emptyMessage="No evidence uploaded yet." />
           {canUpdate ? (
             <div className="border-t border-line pt-4">
+              {/* Progress evidence arrives in batches — a crew photographs a
+                  day's work, not one frame of it. */}
               <FileUploader
                 category="EXECUTION_EVIDENCE"
                 executionProjectId={project.id}
                 maxSizeMb={settings.maxUploadSizeMb}
+                multiple
+                maxFiles={10}
                 label="Upload evidence"
+                helpText={`Up to 10 files, ${settings.maxUploadSizeMb} MB each. Photos, PDFs and drawings.`}
               />
             </div>
           ) : null}

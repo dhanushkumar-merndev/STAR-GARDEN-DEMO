@@ -247,7 +247,12 @@ export const scheduleSiteVisitSchema = z.object({
   longitude,
   map_url: optionalHttpUrl,
   notes: optionalText(2000),
-  designer_id: uuid.optional().or(z.literal('').transform(() => undefined)),
+  // Required: the designer on the visit is the one who inherits the design task
+  // when the Admin approves it (§8.3), so a visit booked without one leaves the
+  // next stage with nobody to hand to. The `min(1)` runs before the uuid check
+  // so an untouched dropdown reads "Choose a designer", not "Not a valid
+  // identifier".
+  designer_id: z.string().min(1, 'Choose the designer attending the visit.').pipe(uuid),
 });
 
 /** Putting a different landscape designer on a booked visit. Admin-only. */

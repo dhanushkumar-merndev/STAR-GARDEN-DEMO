@@ -160,6 +160,21 @@ export default async function LeadDetailPage({
   const canStartSiteVisit = hasInterest && !isTerminalLead;
   const canStartDesign = canStartSiteVisit && hasCompletedVisit;
   const canStartExecution = canStartDesign && designProject?.status === 'APPROVED';
+
+  /**
+   * How far this lead has actually travelled — a separate question from what
+   * may be started next.
+   *
+   * `canStart*` above keys off the *latest* call outcome, so it flips back to
+   * false the moment a later call goes unanswered. That is right for beginning
+   * new work and wrong for reading finished work: it was closing the delivery
+   * tabs on leads that were already in execution. Reaching a phase also opens
+   * everything before it, because once a project is being built the visit and
+   * design that produced it are history someone may need to look up.
+   */
+  const reachedExecution = Boolean(executionProject);
+  const reachedDesign = Boolean(designProject) || reachedExecution;
+  const reachedVisits = siteVisits.length > 0 || reachedDesign;
   const hasCompletedSiteVisit = user.isAdmin && siteVisits.some((visit) => visit.status === 'COMPLETED');
   const hasDesignReadyForReview = user.isAdmin && designProject?.status === 'READY_FOR_REVIEW';
 
@@ -255,10 +270,11 @@ export default async function LeadDetailPage({
       >
         {LEAD_DETAIL_TABS.filter((tab) => user.isAdmin || tab.id !== 'customer-access').map((tab) => {
           const selected = activeTab === tab.id;
+          // Locked only when the phase can neither be started nor looked back on.
           const locked =
-            (tab.id === 'visits' && !canStartSiteVisit && siteVisits.length === 0) ||
-            (tab.id === 'design' && !canStartDesign && !designProject) ||
-            (tab.id === 'execution' && !canStartExecution && !executionProject);
+            (tab.id === 'visits' && !canStartSiteVisit && !reachedVisits) ||
+            (tab.id === 'design' && !canStartDesign && !reachedDesign) ||
+            (tab.id === 'execution' && !canStartExecution && !reachedExecution);
           const needsAttention =
             (tab.id === 'visits' && hasCompletedSiteVisit) ||
             (tab.id === 'design' && hasDesignReadyForReview);
@@ -470,13 +486,23 @@ export default async function LeadDetailPage({
 
       {/* Site visits */}
       {activeTab === 'visits' ? <>
+      {/* Only explain the gate when there is nothing to look at. Once visits
+          exist they stay readable, and telling someone their visits are
+          "locked" while listing them below is just confusing. */}
       {isTerminalLead ? (
         <Alert tone="neutral" title="This lead is no longer active">
-          Site visits cannot be started after a lead is marked {lead.status === 'LOST' ? 'Not interested' : 'Closed'}.
+          {siteVisits.length > 0
+            ? `Visit history is kept for the record. No new visit can be scheduled while the lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`
+            : `Site visits cannot be started after a lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`}
         </Alert>
-      ) : !hasInterest ? (
+      ) : !hasInterest && siteVisits.length === 0 ? (
         <Alert tone="neutral" title="Site visits are locked">
           Record the customer as Interested after a call to schedule the site visit.
+        </Alert>
+      ) : !hasInterest ? (
+        <Alert tone="neutral" title="No new visit can be scheduled yet">
+          The visits below stay available to read. Record a fresh Interested outcome to schedule
+          another one.
         </Alert>
       ) : null}
       <Card>
@@ -563,20 +589,20 @@ export default async function LeadDetailPage({
           action={designProject ? <DesignStatusBadge value={designProject.status} /> : null}
         />
         <CardBody className="space-y-3">
-          {isTerminalLead ? (
-            <Alert tone="neutral" title="This lead is no longer active">
-              Landscape design cannot be started after a lead is marked {lead.status === 'LOST' ? 'Not interested' : 'Closed'}.
-            </Alert>
-          ) : !hasInterest ? (
-            <Alert tone="neutral" title="Landscape design is locked">
-              Record an Interested call outcome first. Then complete the site visit to unlock design work.
-            </Alert>
-          ) : !hasCompletedVisit ? (
-            <Alert tone="neutral" title="Waiting for the site visit">
-              Complete the scheduled site visit before assigning the Landscape Designer.
-            </Alert>
-          ) : designProject ? (
+          {/* A phase that has happened is shown, never locked.
+              The gates below decide whether design work may *start*; they must
+              not decide whether finished design work may be *read*. This panel
+              used to test the current call outcome first, so an approved design
+              on a lead whose latest call was "No answer" reported itself as
+              locked — while the badge beside the title said Approved. */}
+          {designProject ? (
             <>
+              {isTerminalLead ? (
+                <Alert tone="neutral" title="This lead is no longer active">
+                  Kept for the record. Nothing here can be changed while the lead is marked{' '}
+                  {lead.status === 'LOST' ? 'Not interested' : 'Closed'}.
+                </Alert>
+              ) : null}
               <p className="text-sm">
                 <span className="text-ink-muted">Designer: </span>
                 <span className="font-medium text-ink">
@@ -601,6 +627,18 @@ export default async function LeadDetailPage({
                 </Alert>
               ) : null}
             </>
+          ) : isTerminalLead ? (
+            <Alert tone="neutral" title="This lead is no longer active">
+              Landscape design cannot be started after a lead is marked {lead.status === 'LOST' ? 'Not interested' : 'Closed'}.
+            </Alert>
+          ) : !hasInterest ? (
+            <Alert tone="neutral" title="Landscape design is locked">
+              Record an Interested call outcome first. Then complete the site visit to unlock design work.
+            </Alert>
+          ) : !hasCompletedVisit ? (
+            <Alert tone="neutral" title="Waiting for the site visit">
+              Complete the scheduled site visit before assigning the Landscape Designer.
+            </Alert>
           ) : (
             <>
               {writable && canStartDesign && completedVisitDesigner ? (

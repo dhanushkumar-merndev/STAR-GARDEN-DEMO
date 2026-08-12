@@ -1,11 +1,7 @@
 import { LuExternalLink, LuMapPin, LuNavigation } from 'react-icons/lu';
 import { Badge, type Tone } from '@/components/ui';
-import {
-  distanceMetres,
-  googleMapsDirectionsUrl,
-  osmEmbedUrl,
-  osmViewUrl,
-} from '@/lib/utils/maps';
+import { JourneyMap } from '@/components/site-visits/journey-map';
+import { distanceMetres, googleMapsDirectionsUrl, osmViewUrl } from '@/lib/utils/maps';
 import { formatDateTime } from '@/lib/utils/format';
 import type { SiteVisitRow, VisitJourneyStatus } from '@/types/database';
 
@@ -17,8 +13,9 @@ import type { SiteVisitRow, VisitJourneyStatus } from '@/types/database';
  * pretending to be a tracking product: nothing is recorded between the two
  * taps, and the copy says so rather than leaving staff to wonder.
  *
- * A server component: it renders data, has no interaction of its own, and the
- * map is an iframe rather than a mapping library, so there is nothing to hydrate.
+ * The map is the one client-side piece: `JourneyMap` mounts MapLibre to draw
+ * both recorded points at once, which the old single-pin OSM iframe could not.
+ * Everything around it still renders on the server.
  */
 
 const JOURNEY_TONES: Record<VisitJourneyStatus, Tone> = {
@@ -44,13 +41,41 @@ export function VisitJourney({ visit }: { visit: SiteVisitRow }) {
       ? { latitude: visit.check_in_latitude, longitude: visit.check_in_longitude }
       : { latitude: visit.latitude, longitude: visit.longitude };
 
-  const embed = osmEmbedUrl(pin);
   const osmLink = osmViewUrl(pin);
   const directions = googleMapsDirectionsUrl({
     latitude: visit.latitude,
     longitude: visit.longitude,
     address: visit.address,
   });
+
+  // The two taps, as map points. Either can be missing: location sharing is
+  // optional at both ends (a declined browser prompt still records the time).
+  const start =
+    visit.journey_start_latitude != null && visit.journey_start_longitude != null
+      ? {
+          latitude: visit.journey_start_latitude,
+          longitude: visit.journey_start_longitude,
+          label: 'Left for site',
+          when: visit.journey_started_at ? formatDateTime(visit.journey_started_at) : null,
+        }
+      : null;
+
+  const end =
+    visit.check_in_latitude != null && visit.check_in_longitude != null
+      ? {
+          latitude: visit.check_in_latitude,
+          longitude: visit.check_in_longitude,
+          label: 'Reached site',
+          when: visit.check_in_at ? formatDateTime(visit.check_in_at) : null,
+        }
+      : null;
+
+  const destination =
+    visit.latitude != null && visit.longitude != null
+      ? { latitude: visit.latitude, longitude: visit.longitude, label: 'Address on file' }
+      : null;
+
+  const hasMap = Boolean(start || end || destination);
 
   // Crow-flies only, and labelled as such — a sanity check on the arrival tap,
   // not a claim about anyone's route.
@@ -84,24 +109,19 @@ export function VisitJourney({ visit }: { visit: SiteVisitRow }) {
         </p>
       ) : null}
 
-      {embed ? (
-        <figure className="overflow-hidden rounded-lg border border-line">
-          {/* OpenStreetMap's own embed: free, no API key, no billing account and
-              no third-party script inside the CRM. `loading="lazy"` keeps it off
-              the critical path on a phone. */}
-          <iframe
-            src={embed}
-            title="Site location"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            className="h-56 w-full border-0 sm:h-64"
-          />
+      {hasMap ? (
+        <figure className="m-0 overflow-hidden rounded-lg border border-line">
+          <JourneyMap start={start} end={end} destination={destination} className="h-56 sm:h-72" />
           <figcaption className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-muted px-3 py-2 text-xs text-ink-muted">
             <span className="inline-flex items-center gap-1.5">
               <LuMapPin className="size-3.5" />
-              {visit.check_in_latitude != null
-                ? 'Where the designer confirmed arrival'
-                : 'The address on file'}
+              {start && end
+                ? 'A straight line between the two taps — the route taken was not recorded'
+                : end
+                  ? 'Where the designer confirmed arrival'
+                  : start
+                    ? 'Where the designer set off'
+                    : 'The address on file'}
             </span>
             <span className="flex gap-3">
               {osmLink ? (

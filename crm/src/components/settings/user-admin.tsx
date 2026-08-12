@@ -89,6 +89,30 @@ export function StaffEditor({
   const [pending, setPending] = React.useState(false);
   const hasWork = work.total > 0;
 
+  /**
+   * Controlled, not `defaultValue`.
+   *
+   * An uncontrolled field takes its default once, at mount. After a save the
+   * server sends the updated row down, but React keeps the existing DOM node
+   * and its old value — so the row went on showing the previous role until a
+   * hard reload. Holding the values in state, with `StaffDirectory` keying this
+   * component on the saved row, means fresh server data always wins.
+   */
+  const [form, setForm] = React.useState({
+    full_name: member.full_name,
+    mobile: member.mobile ?? '',
+    role: member.role,
+    is_active: member.is_active,
+  });
+
+  const dirty =
+    form.full_name !== member.full_name ||
+    form.mobile !== (member.mobile ?? '') ||
+    form.role !== member.role ||
+    form.is_active !== member.is_active;
+
+  const nameMissing = form.full_name.trim() === '';
+
   return (
     <form
       className="space-y-3"
@@ -107,9 +131,25 @@ export function StaffEditor({
     >
       <input type="hidden" name="user_id" value={member.id} />
       <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr]">
-        <Input name="full_name" defaultValue={member.full_name} required aria-label="Full name" />
-        <Input name="mobile" defaultValue={member.mobile ?? ''} aria-label="Mobile" />
-        <Select name="role" defaultValue={member.role} aria-label="Role">
+        <Input
+          name="full_name"
+          value={form.full_name}
+          onChange={(event) => setForm((state) => ({ ...state, full_name: event.target.value }))}
+          required
+          aria-label="Full name"
+        />
+        <Input
+          name="mobile"
+          value={form.mobile}
+          onChange={(event) => setForm((state) => ({ ...state, mobile: event.target.value }))}
+          aria-label="Mobile"
+        />
+        <Select
+          name="role"
+          value={form.role}
+          onChange={(event) => setForm((state) => ({ ...state, role: event.target.value as UserRole }))}
+          aria-label="Role"
+        >
           {roles.map((role) => (
             <option key={role.value} value={role.value}>
               {role.label}
@@ -129,8 +169,22 @@ export function StaffEditor({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Checkbox name="is_active" label="Active access" defaultChecked={member.is_active} />
-        <Button type="submit" variant="secondary" disabled={pending}>{pending ? 'Saving…' : 'Save user'}</Button>
+        <Checkbox
+          name="is_active"
+          label="Active access"
+          checked={form.is_active}
+          onChange={(event) => setForm((state) => ({ ...state, is_active: event.target.checked }))}
+        />
+        <div className="flex items-center gap-3">
+          {dirty && !pending ? (
+            <span className="text-xs text-ink-muted">Unsaved changes</span>
+          ) : null}
+          {/* Nothing to save is not an error worth a toast — the button simply
+              has no work to do until something differs from the saved row. */}
+          <Button type="submit" variant="secondary" disabled={pending || !dirty || nameMissing}>
+            {pending ? 'Saving…' : 'Save user'}
+          </Button>
+        </div>
       </div>
     </form>
   );
@@ -161,7 +215,16 @@ export function StaffDirectory({
               </span>
               <span className="text-xs text-ink-muted">{member.email}</span>
             </div>
-            <StaffEditor member={member} work={member.activeWork} bdmEnabled={bdmEnabled} />
+            {/* Keyed on the saved values, not just the id: when a save lands
+                and the server sends the row back changed, the key changes and
+                the editor remounts around the new data. Typing does not remount
+                it — the server row is unchanged until a save succeeds. */}
+            <StaffEditor
+              key={`${member.id}:${member.role}:${member.full_name}:${member.mobile ?? ''}:${member.is_active}`}
+              member={member}
+              work={member.activeWork}
+              bdmEnabled={bdmEnabled}
+            />
           </li>
         ))}
       </ul>

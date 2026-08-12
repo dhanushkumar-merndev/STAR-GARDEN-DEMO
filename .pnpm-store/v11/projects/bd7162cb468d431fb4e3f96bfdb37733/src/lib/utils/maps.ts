@@ -50,43 +50,10 @@ export function googleMapsDirectionsUrl(target: MapTarget): string | null {
 /* because that is what staff want on a phone for turn-by-turn directions.     */
 /* -------------------------------------------------------------------------- */
 
-/** Degrees of padding around the pin. Roughly a 500 m box at Indian latitudes. */
-const EMBED_SPAN = 0.0045;
-
-/**
- * An embeddable map centred on a point, with a marker.
- *
- * Returns null without coordinates: OSM's embed takes a bounding box, not a
- * search string, so an address alone cannot produce one. The caller falls back
- * to the "open in Maps" link in that case.
- */
-export function osmEmbedUrl(target: MapTarget): string | null {
-  const { latitude, longitude } = target;
-
-  if (
-    typeof latitude !== 'number' ||
-    !Number.isFinite(latitude) ||
-    typeof longitude !== 'number' ||
-    !Number.isFinite(longitude)
-  ) {
-    return null;
-  }
-
-  const url = new URL('https://www.openstreetmap.org/export/embed.html');
-  url.searchParams.set(
-    'bbox',
-    [
-      longitude - EMBED_SPAN,
-      latitude - EMBED_SPAN,
-      longitude + EMBED_SPAN,
-      latitude + EMBED_SPAN,
-    ].join(','),
-  );
-  url.searchParams.set('layer', 'mapnik');
-  url.searchParams.set('marker', `${latitude},${longitude}`);
-
-  return url.toString();
-}
+/* The OSM `export/embed.html` iframe that used to draw the journey map has
+   been replaced by `components/site-visits/journey-map.tsx`, which renders both
+   recorded points and the line between them — an iframe can only show one pin.
+   The link helpers below are still used, for "open this elsewhere". */
 
 /** The full OSM page, for "see a bigger map". */
 export function osmViewUrl(target: MapTarget): string | null {

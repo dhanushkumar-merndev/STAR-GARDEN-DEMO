@@ -42,6 +42,26 @@
   --color-info: oklch(55% 0.12 250);
   --color-info-bg: oklch(96% 0.025 250);
 
+  /**
+   * shadcn-style aliases, for vendored components only.
+   *
+   * `components/ui/map.tsx` comes from the mapcn registry and is written
+   * against the shadcn token names. Rather than rewrite two thousand lines of
+   * upstream source — and re-rewrite it on every update — the names are pointed
+   * at the CRM palette here. Do not reach for these in new code: the tokens
+   * above are the real ones.
+   */
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(22% 0.01 145);
+  --color-muted: oklch(96.8% 0.008 145);
+  --color-muted-foreground: oklch(48% 0.012 145);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(22% 0.01 145);
+  --color-border: oklch(90% 0.008 145);
+  --color-ring: oklch(58% 0.13 155);
+  --color-accent: oklch(96.8% 0.008 145);
+  --color-accent-foreground: oklch(22% 0.01 145);
+
   --radius-card: 0.875rem;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',

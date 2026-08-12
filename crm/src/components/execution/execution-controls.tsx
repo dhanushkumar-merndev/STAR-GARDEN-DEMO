@@ -236,12 +236,14 @@ export function ExecutionStatusControls({
   isAdmin: boolean;
 }) {
   const router = useRouter();
-  const [status, setStatus] = React.useState<string>(currentStatus);
+  const [status, setStatus] = React.useState<ExecutionStatus>(currentStatus);
+  const [savedStatus, setSavedStatus] = React.useState<ExecutionStatus>(currentStatus);
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
 
   const blocked = status === 'BLOCKED';
   const completing = status === 'COMPLETED';
   const needsOverride = completing && outstandingMandatory > 0;
+  const hasStatusChange = status !== savedStatus;
 
   async function handleSubmit(formData: FormData) {
     const next = await updateExecutionStatusAction(null, formData);
@@ -249,6 +251,11 @@ export function ExecutionStatusControls({
 
     if (next.ok) {
       toast.success('Project status updated.');
+      // Reflect the row returned by Supabase immediately; router.refresh then
+      // reconciles every other server-rendered badge and project field.
+      const confirmedStatus = next.data.status as ExecutionStatus;
+      setStatus(confirmedStatus);
+      setSavedStatus(confirmedStatus);
       setResult(null);
       router.refresh();
     }
@@ -261,7 +268,12 @@ export function ExecutionStatusControls({
 
       <PendingFieldset>
         <Field label="Status" htmlFor="status" error={fieldError(result, 'status')}>
-          <Select id="status" name="status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <Select
+            id="status"
+            name="status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value as ExecutionStatus)}
+          >
             <option value="NOT_STARTED">Not started</option>
             <option value="ASSIGNED">Assigned</option>
             <option value="IN_PROGRESS">In progress</option>
@@ -306,7 +318,9 @@ export function ExecutionStatusControls({
         ) : null}
       </PendingFieldset>
 
-      <SubmitButton disabled={needsOverride && !isAdmin}>Update status</SubmitButton>
+      <SubmitButton disabled={!hasStatusChange || (needsOverride && !isAdmin)}>
+        Update status
+      </SubmitButton>
     </form>
   );
 }

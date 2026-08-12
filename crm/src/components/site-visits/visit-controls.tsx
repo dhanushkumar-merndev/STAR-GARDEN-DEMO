@@ -17,7 +17,7 @@ import {
 } from '@/server/actions/workflow';
 import type { ActionResult } from '@/lib/errors';
 import { googleMapsViewUrl } from '@/lib/utils/maps';
-import { FileUploader } from '@/components/files/uploader';
+import { FileUploader, type FileUploaderHandle } from '@/components/files/uploader';
 
 /**
  * Check-in / check-out (AGENTS.md §8.3, §15, §18).
@@ -260,8 +260,25 @@ export function CheckOutButton({
   const [open, setOpen] = React.useState(false);
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
   const location = useOneShotLocation();
+  const uploader = React.useRef<FileUploaderHandle>(null);
 
+  /**
+   * One button for both jobs: the photos go up, then the visit closes.
+   *
+   * Order matters. Checking out first and uploading after would mean a failed
+   * upload leaves a closed visit with no evidence and nobody still on site to
+   * fix it. Uploading first means a failure stops the check-out, and the
+   * designer — who is standing there with the phone — can retry.
+   */
   async function handleSubmit(formData: FormData) {
+    if (uploader.current && uploader.current.pendingCount() > 0) {
+      const uploaded = await uploader.current.uploadAll();
+      if (!uploaded) {
+        toast.error('Fix the photos that failed, then check out.');
+        return;
+      }
+    }
+
     const next = await checkOutAction(null, formData);
     setResult(next);
 
@@ -304,15 +321,23 @@ export function CheckOutButton({
           <LocationControl {...location} required />
           <div className="border-t border-line pt-4">
             <FileUploader
+              ref={uploader}
               category="SITE_VISIT_ATTACHMENT"
               siteVisitId={siteVisitId}
               maxSizeMb={maxSizeMb}
               cameraCapture
+              multiple
+              maxFiles={10}
+              hideAction
               label="Photo evidence"
-              helpText="Choose a photo or take one with this phone. Upload it before checking out."
+              helpText="Take photos now or choose from the gallery — up to 10. They upload when you check out."
             />
           </div>
-          <SubmitButton fullWidth disabled={!location.coords || location.state === 'asking'}>
+          <SubmitButton
+            fullWidth
+            pendingLabel="Uploading and checking out…"
+            disabled={!location.coords || location.state === 'asking'}
+          >
             Check out
           </SubmitButton>
         </form>

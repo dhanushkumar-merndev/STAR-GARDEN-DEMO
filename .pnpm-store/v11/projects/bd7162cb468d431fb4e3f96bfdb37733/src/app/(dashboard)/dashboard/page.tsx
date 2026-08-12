@@ -1,5 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import {
+  LuArrowRight,
+  LuCalendarDays,
+  LuChartColumn,
+  LuCircleAlert,
+  LuClipboardList,
+  LuEye,
+  LuHardHat,
+  LuMapPin,
+  LuPencilRuler,
+  LuUserPlus,
+  LuUsers,
+} from 'react-icons/lu';
 import { requirePageUser } from '@/lib/auth/session';
 import {
   getAdminDashboard,
@@ -13,7 +26,12 @@ import { listSiteVisits } from '@/server/services/site-visits';
 import { Alert, Card, CardHeader, CardBody, EmptyState, PageHeader, StatTile } from '@/components/ui';
 import { DueBadge, SiteVisitStatusBadge } from '@/components/status';
 import { formatDue, formatDateTime, humanizeEnum } from '@/lib/utils/format';
-import { LeadAnalyticsChart } from '@/components/dashboard/lead-analytics-charts';
+import {
+  LeadRankingChart,
+  LeadShareChart,
+  LeadTrendChart,
+} from '@/components/dashboard/lead-analytics-charts';
+import { DateRangeFilter } from '@/components/dashboard/date-range-filter';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -80,58 +98,41 @@ async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
   const data = await getAdminDashboard(user, dateRange);
   const analyticsDescription = dateRange.from || dateRange.to ? 'Selected date range' : 'Last 90 days';
 
+  const attention =
+    data.unassigned + data.noNextAction + data.followUps.overdue + data.visitsOverdue;
+
   return (
-    <div className="space-y-4">
-      <form method="GET" className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-        <div className="mr-2 min-w-0">
-          <p className="text-sm font-semibold text-ink">Filter charts</p>
-          <p className="text-xs text-ink-muted">Choose a date range</p>
-        </div>
-        <label className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ink-muted">From</span>
-              <input
-                type="date"
-                name="from"
-                defaultValue={dateRange.from ?? ''}
-                className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-              />
-            </label>
-            <label className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ink-muted">To</span>
-              <input
-                type="date"
-                name="to"
-                defaultValue={dateRange.to ?? ''}
-                className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-              />
-            </label>
-            <button className="h-10 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700" type="submit">
-              Apply
-            </button>
-            {dateRange.from || dateRange.to ? (
-              <Link href="/dashboard" className="text-sm font-medium text-brand-700 hover:text-brand-800">
-                Reset
-              </Link>
-            ) : null}
-      </form>
+    <div className="space-y-6">
+      <DateRangeFilter from={dateRange.from} to={dateRange.to} />
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-ink">New leads</h2>
-        <div className="grid grid-cols-3 gap-2">
-          <StatTile label="Selected range" value={data.leadsInRange} tone="brand" />
-          <StatTile label="Today" value={data.leadsToday} />
-          <StatTile label="This month" value={data.leadsThisMonth} />
+      <Section title="New leads" hint={analyticsDescription}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatTile
+            label="Selected range"
+            value={data.leadsInRange}
+            tone="brand"
+            icon={<LuUsers className="size-4" />}
+          />
+          <StatTile label="Today" value={data.leadsToday} icon={<LuCalendarDays className="size-4" />} />
+          <StatTile
+            label="This month"
+            value={data.leadsThisMonth}
+            icon={<LuChartColumn className="size-4" />}
+          />
         </div>
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-ink">Needs attention</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <Section
+        title="Needs attention"
+        hint={attention === 0 ? 'All clear' : `${attention} item(s) waiting on someone`}
+      >
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Unassigned"
             value={data.unassigned}
             tone={data.unassigned > 0 ? 'warn' : 'neutral'}
             href="/leads?scope=UNASSIGNED"
+            icon={<LuUserPlus className="size-4" />}
           />
           <StatTile
             label="No next action"
@@ -139,94 +140,120 @@ async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
             tone={data.noNextAction > 0 ? 'warn' : 'neutral'}
             href="/leads?scope=NO_NEXT_ACTION"
             hint="Live leads with nothing scheduled"
+            icon={<LuCircleAlert className="size-4" />}
           />
           <StatTile
             label="Overdue follow-ups"
             value={data.followUps.overdue}
             tone={data.followUps.overdue > 0 ? 'danger' : 'neutral'}
             href="/follow-ups?scope=OVERDUE"
+            icon={<LuClipboardList className="size-4" />}
           />
           <StatTile
             label="Overdue visits"
             value={data.visitsOverdue}
             tone={data.visitsOverdue > 0 ? 'danger' : 'neutral'}
             href="/site-visits?scope=OVERDUE"
+            icon={<LuMapPin className="size-4" />}
           />
         </div>
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-ink">Design and execution</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <Section title="Design and execution">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile
             label="Awaiting designer"
             value={data.designs.awaitingAssignment}
             tone={data.designs.awaitingAssignment > 0 ? 'warn' : 'neutral'}
             href="/designs?scope=AWAITING_ASSIGNMENT"
+            icon={<LuPencilRuler className="size-4" />}
           />
           <StatTile
             label="Ready for review"
             value={data.designs.readyForReview}
-            tone="info"
+            tone={data.designs.readyForReview > 0 ? 'info' : 'neutral'}
             href="/designs?scope=READY_FOR_REVIEW"
+            icon={<LuEye className="size-4" />}
           />
           <StatTile
             label="Blocked projects"
             value={data.execution.blocked}
             tone={data.execution.blocked > 0 ? 'danger' : 'neutral'}
             href="/execution?scope=BLOCKED"
+            icon={<LuHardHat className="size-4" />}
           />
           <StatTile
             label="Overdue tasks"
             value={data.execution.overdue}
             tone={data.execution.overdue > 0 ? 'danger' : 'neutral'}
             href="/execution"
+            icon={<LuClipboardList className="size-4" />}
           />
         </div>
-      </section>
+      </Section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Lead trend" description={analyticsDescription} />
-          <CardBody>
-            <LeadAnalyticsChart kind="line" trend={data.leadTrend} />
-          </CardBody>
-        </Card>
+      <Section title="Analytics" hint={analyticsDescription}>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* The trend is the one chart worth reading across, so it gets the
+              full width on large screens. */}
+          <Card className="lg:col-span-2">
+            <CardHeader title="Lead trend" description="Leads received per day" />
+            <CardBody>
+              <LeadTrendChart trend={data.leadTrend} />
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader title="Leads by source" description={analyticsDescription} />
-          <CardBody>
-            <LeadAnalyticsChart
-              kind="bar"
-              items={data.bySource.map((row) => ({ label: humanizeEnum(row.source), count: row.count }))}
-            />
-          </CardBody>
-        </Card>
+          <Card>
+            <CardHeader title="Where leads come from" description="Share by source" />
+            <CardBody>
+              <LeadShareChart
+                items={data.bySource.map((row) => ({
+                  key: row.source,
+                  label: humanizeEnum(row.source),
+                  count: row.count,
+                }))}
+              />
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader title="Leads by owner" description={analyticsDescription} />
-          <CardBody>
-            <LeadAnalyticsChart kind="bar" items={data.byBdm.map((row) => ({ label: row.name, count: row.count }))} />
-          </CardBody>
-        </Card>
+          <Card className="lg:col-span-2">
+            <CardHeader title="Leads by status" description="Where the pipeline is sitting" />
+            <CardBody>
+              <LeadRankingChart
+                height="h-72"
+                items={data.byStatus.map((row) => ({
+                  key: row.status,
+                  label: humanizeEnum(row.status),
+                  count: row.count,
+                }))}
+              />
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader title="Leads by status" description={analyticsDescription} />
-          <CardBody>
-            <LeadAnalyticsChart
-              kind="bar"
-              items={data.byStatus.map((row) => ({ label: humanizeEnum(row.status), count: row.count }))}
-            />
-          </CardBody>
-        </Card>
+          <Card>
+            <CardHeader title="Leads by owner" description="Workload across the team" />
+            <CardBody>
+              <LeadRankingChart
+                height="h-72"
+                items={data.byBdm.map((row) => ({ key: row.name, label: row.name, count: row.count }))}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      </Section>
 
+      <Section title="Recent activity">
         <Card>
           <CardHeader
-            title="Recent activity"
+            title="Latest changes"
             description="Assignments, approvals, downloads and closures"
             action={
-              <Link href="/settings/audit" className="text-xs font-medium text-brand-700">
+              <Link
+                href="/settings/audit"
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-800"
+              >
                 Full history
+                <LuArrowRight className="size-3" />
               </Link>
             }
           />
@@ -236,19 +263,43 @@ async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
             ) : (
               <ul className="divide-y divide-line">
                 {data.recentActivity.map((row) => (
-                  <li key={row.id} className="px-4 py-2.5 text-sm">
-                    <p className="font-medium text-ink">{describeAction(row.action)}</p>
-                    <p className="text-xs text-ink-muted">
+                  <li
+                    key={row.id}
+                    className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm"
+                  >
+                    <span className="font-medium text-ink">{describeAction(row.action)}</span>
+                    <span className="text-xs text-ink-muted">
                       {row.actor ?? 'System'} · {formatDateTime(row.created_at)}
-                    </p>
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
           </CardBody>
         </Card>
-      </div>
+      </Section>
     </div>
+  );
+}
+
+/** A titled band of the dashboard, so the page reads as groups not a wall. */
+function Section({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
+        {hint ? <span className="text-xs text-ink-muted">{hint}</span> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 

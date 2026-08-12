@@ -20,7 +20,6 @@ import { canWriteLead } from '@/lib/permissions';
 import { Alert, Card, CardBody, CardHeader } from '@/components/ui';
 import { SiteVisitStatusBadge } from '@/components/status';
 import { FileList } from '@/components/files/file-list';
-import { FileUploader } from '@/components/files/uploader';
 import {
   CancelVisitDialog,
   CheckInButton,
@@ -30,7 +29,8 @@ import {
   StartJourneyButton,
 } from '@/components/site-visits/visit-controls';
 import { VisitJourney } from '@/components/site-visits/journey';
-import { formatDateTime } from '@/lib/utils/format';
+import { formatDate, formatDateTime } from '@/lib/utils/format';
+import { hasVisitDayArrived } from '@/lib/utils/visit-timing';
 import { formatMobile, telHref } from '@/lib/utils/phone';
 import { googleMapsDirectionsUrl, googleMapsViewUrl } from '@/lib/utils/maps';
 
@@ -58,8 +58,8 @@ export default async function SiteVisitPage({
 
   const canManage = canWriteLead(user, lead ?? { assigned_bdm_id: null });
   const canRecord = canManage || isAttendee;
-  const canUploadVisitPhotos = user.role === 'DESIGNER' && isAttendee && visit.status !== 'CANCELLED';
   const isOpen = visit.status !== 'COMPLETED' && visit.status !== 'CANCELLED';
+  const visitDayArrived = hasVisitDayArrived(visit.scheduled_start_at);
   const capturedSiteTarget = {
     latitude: visit.latitude ?? visit.check_in_latitude,
     longitude: visit.longitude ?? visit.check_in_longitude,
@@ -137,32 +137,56 @@ export default async function SiteVisitPage({
         />
         <CardBody className="space-y-4">
           <VisitJourney visit={visit} />
-          {isOpen && canRecord ? (
-            <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-            {/* Start comes first, then arrival, then the visit record. Showing
-                only the next step keeps the sequence obvious on a phone. */}
-            {!visit.check_in_at && visit.journey_status === 'NOT_STARTED' ? (
-              <StartJourneyButton siteVisitId={visit.id} />
-            ) : null}
+          {isOpen && (canRecord || user.isAdmin) ? (
+            <div className="space-y-3 border-t border-line pt-4">
+              {/* Nothing may be recorded before the booked day. The server
+                  refuses it either way (§7.5); this is so the designer reads a
+                  date instead of hitting an error. Late is never blocked — the
+                  CRM tracks overdue visits, and those still have to be
+                  completable. */}
+              {canRecord && !visitDayArrived ? (
+                <p className="text-sm text-ink-muted">
+                  The journey opens on{' '}
+                  <span className="font-medium text-ink">
+                    {formatDate(visit.scheduled_start_at)}
+                  </span>
+                  . Ask an Admin to reschedule if it is happening sooner.
+                </p>
+              ) : null}
 
-            {!visit.check_in_at ? (
-              <CheckInButton siteVisitId={visit.id} />
-            ) : !visit.check_out_at ? (
-              <CheckOutButton siteVisitId={visit.id} maxSizeMb={settings.maxUploadSizeMb} />
-            ) : null}
+              <div className="flex flex-wrap gap-2">
+                {/* Exactly one step at a time.
+                    Start journey → Reached site → Check out → Complete.
 
-            {canManage ? (
-              <>
-                <CompleteVisitDialog siteVisitId={visit.id} />
-                {/* Rescheduling is Admin-only; the service refuses anyone else. */}
+                    These used to be two independent conditions, so a visit that
+                    had not started showed "Start journey" and "Reached site"
+                    side by side — a designer could record arrival without ever
+                    having left, and on a phone there was no way to tell which
+                    was the next step. A single chain makes the wrong button
+                    unreachable rather than merely discouraged. */}
+                {canRecord && visitDayArrived ? (
+                  !visit.check_in_at && visit.journey_status === 'NOT_STARTED' ? (
+                    <StartJourneyButton siteVisitId={visit.id} />
+                  ) : !visit.check_in_at ? (
+                    <CheckInButton siteVisitId={visit.id} />
+                  ) : !visit.check_out_at ? (
+                    <CheckOutButton siteVisitId={visit.id} maxSizeMb={settings.maxUploadSizeMb} />
+                  ) : canManage ? (
+                    // Completing is the step after check-out, not a parallel option.
+                    <CompleteVisitDialog siteVisitId={visit.id} />
+                  ) : null
+                ) : null}
+
+                {/* Outside the sequence and outside the date window: these are
+                    the Admin's escape hatches, and rescheduling a visit before
+                    its day is the main reason to reach for one. */}
                 {user.isAdmin ? (
                   <>
                     <RescheduleVisitDialog siteVisitId={visit.id} />
                     <CancelVisitDialog siteVisitId={visit.id} />
                   </>
                 ) : null}
-              </>
-            ) : null}
+              </div>
             </div>
           ) : null}
         </CardBody>
@@ -244,22 +268,18 @@ export default async function SiteVisitPage({
         </CardBody>
       </Card> : null}
 
+      {/* Read-only. Site photos are uploaded in the check-out dialog, which is
+          the one place the designer is already being asked for evidence —
+          a second uploader here put two controls for the same category on one
+          screen with nothing to say which to use. */}
       <Card>
         <CardHeader title="Photos and attachments" />
-        <CardBody className="space-y-4">
-          <FileList files={files} canArchive={user.isAdmin} emptyMessage="No photos yet." />
-          {canUploadVisitPhotos ? (
-            <div className="border-t border-line pt-4">
-              <FileUploader
-                category="SITE_VISIT_ATTACHMENT"
-                siteVisitId={visit.id}
-                maxSizeMb={settings.maxUploadSizeMb}
-                cameraCapture
-                label="Add site photo"
-                helpText="Take a photo on your phone or choose one from your gallery. Admin can review it with this visit."
-              />
-            </div>
-          ) : null}
+        <CardBody>
+          <FileList
+            files={files}
+            canArchive={user.isAdmin}
+            emptyMessage="No photos yet. Site photos are added when the designer checks out."
+          />
         </CardBody>
       </Card>
     </div>

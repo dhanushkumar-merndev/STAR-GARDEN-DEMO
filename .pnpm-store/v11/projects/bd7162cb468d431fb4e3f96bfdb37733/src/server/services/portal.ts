@@ -285,8 +285,14 @@ export async function grantPortalAccess(
     .maybeSingle();
 
   if (staffMatch) {
+    // The dialog shows only the field message, so it has to carry the reason on
+    // its own — "use the customer's address" left an Admin guessing what was
+    // wrong with the one they had just typed.
     throw new AppError('VALIDATION', 'That address already belongs to a staff member.', {
-      fields: { email: 'Use the customer’s own address, not a staff one.' },
+      fields: {
+        email:
+          'This address is already a staff account, so it cannot also be a customer login. Use the customer’s own email.',
+      },
     });
   }
 

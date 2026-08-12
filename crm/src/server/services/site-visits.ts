@@ -15,6 +15,7 @@ import { siteVisitAssignedEmail } from '@/lib/email/templates';
 import { assertCanReadSiteVisit, assertCanWriteLead, assertLeadCanStartDelivery } from '@/lib/permissions/guards';
 import { canScheduleVisitTime } from '@/lib/permissions';
 import { assertSiteVisitTransition } from '@/lib/state-machines';
+import { hasVisitDayArrived } from '@/lib/utils/visit-timing';
 import type { SessionUser } from '@/lib/auth/session';
 import type { SiteVisitRow } from '@/types/database';
 import { refreshLeadNextAction } from './activities';
@@ -55,7 +56,7 @@ export async function scheduleSiteVisit(
     longitude?: number;
     map_url?: string;
     notes?: string;
-    designer_id?: string;
+    designer_id: string;
   },
 ): Promise<SiteVisitRow> {
   if (!canScheduleVisitTime(user)) {
@@ -86,21 +87,26 @@ export async function scheduleSiteVisit(
   }
 
   // The designer who attends is the one who will later own the design, so the
-  // choice is made here rather than deferred to the design step.
-  const designerId = input.designer_id?.trim() || null;
+  // choice is made here rather than deferred to the design step — which is why
+  // it is required rather than optional.
+  const designerId = input.designer_id.trim();
 
-  if (designerId) {
-    const { data: designer } = await supabase
-      .from('profiles')
-      .select('id, role, is_active')
-      .eq('id', designerId)
-      .maybeSingle();
+  if (!designerId) {
+    throw new AppError('VALIDATION', 'A site visit needs a landscape designer.', {
+      fields: { designer_id: 'Choose the designer attending the visit.' },
+    });
+  }
 
-    if (!designer || !designer.is_active || designer.role !== 'DESIGNER') {
-      throw new AppError('VALIDATION', 'That landscape designer is not available.', {
-        fields: { designer_id: 'Choose an active landscape designer.' },
-      });
-    }
+  const { data: designer } = await supabase
+    .from('profiles')
+    .select('id, role, is_active')
+    .eq('id', designerId)
+    .maybeSingle();
+
+  if (!designer || !designer.is_active || designer.role !== 'DESIGNER') {
+    throw new AppError('VALIDATION', 'That landscape designer is not available.', {
+      fields: { designer_id: 'Choose an active landscape designer.' },
+    });
   }
 
   const { data: visit, error } = await supabase
@@ -298,6 +304,28 @@ export async function rescheduleSiteVisit(
 }
 
 /**
+ * Refuses a journey tap before the day the visit is booked for.
+ *
+ * The UI hides the buttons until then, but that is a convenience — this is the
+ * check that decides (§7.5). One-sided: late is fine, early is not. See
+ * `lib/utils/visit-timing.ts` for why.
+ */
+function assertVisitDayArrived(scheduledStartAt: string, action: string): void {
+  if (hasVisitDayArrived(scheduledStartAt)) return;
+
+  const when = new Date(scheduledStartAt).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Asia/Kolkata',
+  });
+
+  throw new AppError(
+    'INVALID_TRANSITION',
+    `This visit is booked for ${when}. You can ${action} from that morning — ask an Admin to reschedule if it is happening sooner.`,
+  );
+}
+
+/**
  * "Start" — the designer has left for the site.
  *
  * The Admin sees this on the visits board so a customer asking "is someone
@@ -321,6 +349,8 @@ export async function startJourney(
       'This visit is already finished. Start a journey only for an upcoming visit.',
     );
   }
+
+  assertVisitDayArrived(visit.scheduled_start_at, 'start the journey');
 
   if (visit.journey_status === 'ARRIVED') {
     throw new AppError('INVALID_TRANSITION', 'You have already reached this site.');
@@ -397,6 +427,7 @@ export async function checkIn(
   }
 
   assertSiteVisitTransition(visit.status, 'IN_PROGRESS');
+  assertVisitDayArrived(visit.scheduled_start_at, 'record arrival');
 
   const supabase = await createClient();
   const now = new Date().toISOString();

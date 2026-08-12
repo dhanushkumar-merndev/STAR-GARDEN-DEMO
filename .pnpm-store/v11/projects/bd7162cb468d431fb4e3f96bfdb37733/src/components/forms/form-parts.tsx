@@ -18,12 +18,16 @@ import type { ActionResult } from '@/lib/errors';
 export function SubmitButton({
   children,
   pendingLabel,
+  disabled,
   ...props
 }: ButtonProps & { pendingLabel?: string }) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" disabled={pending} aria-busy={pending} {...props}>
+    // `disabled` is pulled out of the spread and combined: left in `...props` it
+    // would land after `disabled={pending}` and a caller passing `false` (or
+    // nothing) would re-enable the button mid-submit, allowing a double post.
+    <Button type="submit" disabled={pending || disabled} aria-busy={pending} {...props}>
       {pending ? (pendingLabel ?? 'Saving…') : children}
     </Button>
   );

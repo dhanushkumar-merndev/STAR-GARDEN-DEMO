@@ -293,48 +293,90 @@ export function EmptyState({
   );
 }
 
+const STAT_VALUE_CLASSES: Record<Tone, string> = {
+  neutral: 'text-ink',
+  brand: 'text-brand-700',
+  ok: 'text-[--color-ok]',
+  warn: 'text-[oklch(45%_0.13_70)]',
+  danger: 'text-danger',
+  info: 'text-[--color-info]',
+};
+
+/** The colour bar down the left edge — a second cue beside the value's colour. */
+const STAT_EDGE_CLASSES: Record<Tone, string> = {
+  neutral: 'bg-line',
+  brand: 'bg-brand-500',
+  ok: 'bg-[--color-ok]',
+  warn: 'bg-[--color-warn]',
+  danger: 'bg-danger',
+  info: 'bg-[--color-info]',
+};
+
+/**
+ * A single number worth glancing at.
+ *
+ * A zero in a "needs attention" tile is good news, so a non-neutral tone only
+ * shows once the count is actually non-zero — callers pass the tone
+ * conditionally. The tone appears twice, as an edge bar and in the value's
+ * colour, because §16 forbids leaving meaning to colour alone; the label
+ * spells out what the number is either way.
+ */
 export function StatTile({
   label,
   value,
   tone = 'neutral',
   href,
   hint,
+  icon,
 }: {
   label: string;
   value: number | string;
   tone?: Tone;
   href?: string;
   hint?: string;
+  icon?: React.ReactNode;
 }) {
   const content = (
     <>
-      <p className="text-xs font-medium text-ink-muted">{label}</p>
-      <p
+      <span
+        aria-hidden="true"
         className={cn(
-          'mt-1 text-2xl font-semibold tabular-nums',
-          tone === 'danger' && 'text-danger',
-          tone === 'warn' && 'text-[oklch(45%_0.13_70)]',
-          tone === 'ok' && 'text-[--color-ok]',
-          tone === 'neutral' && 'text-ink',
-          tone === 'brand' && 'text-brand-700',
-          tone === 'info' && 'text-[--color-info]',
+          'absolute inset-y-0 left-0 w-1 rounded-l-[--radius-card]',
+          STAT_EDGE_CLASSES[tone],
         )}
-      >
+      />
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium text-ink-muted">{label}</p>
+        {icon ? (
+          <span aria-hidden="true" className="shrink-0 text-ink-subtle">
+            {icon}
+          </span>
+        ) : null}
+      </div>
+      <p className={cn('mt-1.5 text-3xl font-semibold tracking-tight tabular-nums', STAT_VALUE_CLASSES[tone])}>
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-xs text-ink-subtle">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-xs leading-snug text-ink-subtle">{hint}</p> : null}
     </>
   );
 
+  const base = 'card relative overflow-hidden py-3 pr-3 pl-4';
+
   if (href) {
     return (
-      <a href={href} className="card block p-3 transition-colors hover:bg-surface-muted">
+      <a
+        href={href}
+        className={cn(
+          base,
+          'block transition-all hover:border-brand-200 hover:bg-brand-50/40 hover:shadow-sm',
+        )}
+      >
         {content}
       </a>
     );
   }
 
-  return <div className="card p-3">{content}</div>;
+  return <div className={base}>{content}</div>;
 }
 
 export function Alert({

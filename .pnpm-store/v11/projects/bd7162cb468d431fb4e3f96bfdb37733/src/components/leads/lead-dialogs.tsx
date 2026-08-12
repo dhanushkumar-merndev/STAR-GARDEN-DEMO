@@ -320,10 +320,14 @@ export function ScheduleVisitDialog({
               <Field
                 label="Landscape Designer visiting the site"
                 htmlFor="designer_id"
+                required
+                error={fieldError(result, 'designer_id')}
                 hint="After the Admin approves the visit, this same designer automatically receives the design task and requirement."
               >
-                <Select id="designer_id" name="designer_id" defaultValue="">
-                  <option value="">No designer</option>
+                <Select id="designer_id" name="designer_id" defaultValue="" required>
+                  <option value="" disabled>
+                    Choose a designer
+                  </option>
                   {designers.map((designer) => (
                     <option key={designer.id} value={designer.id}>
                       {designer.full_name}
@@ -331,14 +335,23 @@ export function ScheduleVisitDialog({
                   ))}
                 </Select>
               </Field>
-            ) : null}
+            ) : (
+              // Hiding the field here would let the form submit and fail server
+              // validation with nothing on screen to act on.
+              <Alert tone="warn" title="No landscape designer available">
+                A visit needs a designer to attend. Add one under Settings → Users
+                and access, then schedule the visit.
+              </Alert>
+            )}
 
             <Field label="Notes" htmlFor="notes">
               <Textarea id="notes" name="notes" rows={2} placeholder="Gate code, parking, who to ask for…" />
             </Field>
           </PendingFieldset>
 
-          <SubmitButton fullWidth>Schedule visit</SubmitButton>
+          <SubmitButton fullWidth disabled={designers.length === 0}>
+            Schedule visit
+          </SubmitButton>
         </form>
       </DialogContent>
     </Dialog>
