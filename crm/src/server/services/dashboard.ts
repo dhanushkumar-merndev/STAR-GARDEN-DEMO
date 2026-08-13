@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
+import { AppError } from '@/lib/errors';
 import type { SessionUser } from '@/lib/auth/session';
 import { designCounts } from './designs';
 import { executionCounts } from './execution';
@@ -14,16 +15,6 @@ import { listSiteVisits } from './site-visits';
  * what the viewer is allowed to see — a BDM's "overdue" count cannot include
  * another BDM's leads even though the query does not name an owner.
  */
-
-function startOfToday(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
-function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 86_400_000).toISOString();
-}
 
 export interface DashboardDateRange {
   from?: string;
@@ -44,9 +35,23 @@ function istBoundary(date: string, endExclusive = false): string {
 }
 
 function resolveAnalyticsRange(input: DashboardDateRange) {
-  const from = validDate(input.from) ? istBoundary(input.from) : daysAgo(90);
-  const to = validDate(input.to) ? istBoundary(input.to, true) : new Date().toISOString();
-  return new Date(to) > new Date(from) ? { from, to } : { from: daysAgo(90), to: new Date().toISOString() };
+  // Automatic boundaries are stable for the whole hour, otherwise using the
+  // current millisecond would create a different database-cache key per request.
+  const nextHour = new Date();
+  nextHour.setMinutes(0, 0, 0);
+  nextHour.setHours(nextHour.getHours() + 1);
+
+  const to = validDate(input.to) ? istBoundary(input.to, true) : nextHour.toISOString();
+  const from = validDate(input.from)
+    ? istBoundary(input.from)
+    : new Date(new Date(to).getTime() - 90 * 86_400_000).toISOString();
+
+  if (new Date(to) > new Date(from)) return { from, to };
+
+  return {
+    from: new Date(nextHour.getTime() - 90 * 86_400_000).toISOString(),
+    to: nextHour.toISOString(),
+  };
 }
 
 export interface AdminDashboard {
@@ -79,139 +84,58 @@ export async function getAdminDashboard(
   user: SessionUser,
   dateRange: DashboardDateRange = {},
 ): Promise<AdminDashboard> {
+  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'The Admin dashboard is Admin-only.');
+
   const supabase = await createClient();
   const analyticsRange = resolveAnalyticsRange(dateRange);
 
-  const [
-    today,
-    week,
-    month,
-    leadsInRange,
-    unassigned,
-    noNextAction,
-    allLeads,
-    visitsTodayList,
-    visitsOverdueList,
-    followUps,
-    designs,
-    execution,
-    audit,
-  ] = await Promise.all([
-    supabase.from('leads').select('id', { count: 'exact', head: true }).gte('created_at', startOfToday()),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).gte('created_at', daysAgo(7)),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).gte('created_at', daysAgo(30)),
-    supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', analyticsRange.from)
-      .lt('created_at', analyticsRange.to),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).is('assigned_bdm_id', null).not('status', 'in', '("LOST","CLOSED")'),
-    supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true })
-      .is('next_action_at', null)
-      .not('status', 'in', '("LOST","CLOSED")'),
-    // Grouping is done in JS: the row count here is an internal CRM's pipeline,
-    // not a warehouse, and a materialised view would be premature (§3.2).
-    supabase
-      .from('leads')
-      .select('source, status, created_at, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name)')
-      .gte('created_at', analyticsRange.from)
-      .lt('created_at', analyticsRange.to)
-      .limit(5000),
-    listSiteVisits(user, { scope: 'TODAY', limit: 200 }),
-    listSiteVisits(user, { scope: 'OVERDUE', limit: 200 }),
-    followUpCounts(user),
-    designCounts(user),
-    executionCounts(user),
-    supabase
-      .from('audit_logs')
-      .select('id, action, entity_type, created_at, actor:profiles!audit_logs_actor_user_id_fkey(full_name)')
-      .in('action', [
-        'lead.assigned',
-        'lead.reassigned',
-        'design.version_approved',
-        'file.downloaded',
-        'execution.completed',
-        'lead.status_changed',
-      ])
-      .order('created_at', { ascending: false })
-      .limit(12),
-  ]);
+  const { data, error } = await supabase.rpc('admin_dashboard_snapshot', {
+    p_from: analyticsRange.from,
+    p_to: analyticsRange.to,
+  });
 
-  const rows = (allLeads.data ?? []) as unknown as {
-    source: string;
-    status: string;
-    created_at: string;
-    assigned_bdm: { full_name: string } | null;
-  }[];
+  if (error || !data || Array.isArray(data) || typeof data !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load the Admin dashboard.', { cause: error });
+  }
 
-  const tally = <K extends string>(items: (K | null | undefined)[]) => {
-    const map = new Map<string, number>();
-    for (const item of items) {
-      if (!item) continue;
-      map.set(item, (map.get(item) ?? 0) + 1);
-    }
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  const snapshot = data as unknown as {
+    leads_today: number;
+    leads_this_week: number;
+    leads_this_month: number;
+    leads_in_range: number;
+    unassigned: number;
+    no_next_action: number;
+    lead_trend: { day: string; count: number }[];
+    by_source: { source: string; count: number }[];
+    by_status: { status: string; count: number }[];
+    by_bdm: { name: string; count: number }[];
+    follow_ups: { overdue: number; today: number };
+    designs: AdminDashboard['designs'];
+    execution: AdminDashboard['execution'];
+    visits_today: number;
+    visits_overdue: number;
+    recent_activity: AdminDashboard['recentActivity'];
   };
 
   return {
-    leadsToday: today.count ?? 0,
-    leadsThisWeek: week.count ?? 0,
-    leadsThisMonth: month.count ?? 0,
-    leadsInRange: leadsInRange.count ?? 0,
+    leadsToday: snapshot.leads_today ?? 0,
+    leadsThisWeek: snapshot.leads_this_week ?? 0,
+    leadsThisMonth: snapshot.leads_this_month ?? 0,
+    leadsInRange: snapshot.leads_in_range ?? 0,
     analyticsRange,
-    leadTrend: leadTrend(rows, analyticsRange),
-    unassigned: unassigned.count ?? 0,
-    noNextAction: noNextAction.count ?? 0,
-    bySource: tally(rows.map((r) => r.source)).map(([source, count]) => ({ source, count })),
-    byStatus: tally(rows.map((r) => r.status)).map(([status, count]) => ({ status, count })),
-    byBdm: tally(rows.map((r) => r.assigned_bdm?.full_name ?? 'Unassigned')).map(([name, count]) => ({
-      name,
-      count,
-    })),
-    followUps,
-    designs,
-    execution,
-    visitsToday: visitsTodayList.length,
-    visitsOverdue: visitsOverdueList.length,
-    recentActivity: ((audit.data ?? []) as unknown as {
-      id: string;
-      action: string;
-      entity_type: string;
-      created_at: string;
-      actor: { full_name: string } | null;
-    }[]).map((row) => ({
-      id: row.id,
-      action: row.action,
-      entity_type: row.entity_type,
-      created_at: row.created_at,
-      actor: row.actor?.full_name ?? null,
-    })),
+    leadTrend: (snapshot.lead_trend ?? []).map((row) => ({ label: row.day, count: row.count })),
+    unassigned: snapshot.unassigned ?? 0,
+    noNextAction: snapshot.no_next_action ?? 0,
+    bySource: snapshot.by_source ?? [],
+    byStatus: snapshot.by_status ?? [],
+    byBdm: snapshot.by_bdm ?? [],
+    followUps: snapshot.follow_ups ?? { overdue: 0, today: 0 },
+    designs: snapshot.designs,
+    execution: snapshot.execution,
+    visitsToday: snapshot.visits_today ?? 0,
+    visitsOverdue: snapshot.visits_overdue ?? 0,
+    recentActivity: snapshot.recent_activity ?? [],
   };
-}
-
-function leadTrend(
-  rows: { created_at: string }[],
-  range: { from: string; to: string },
-): { label: string; count: number }[] {
-  const dayMs = 86_400_000;
-  const first = new Date(range.from);
-  const last = new Date(range.to);
-  const dayCount = Math.min(180, Math.max(1, Math.ceil((last.getTime() - first.getTime()) / dayMs)));
-  const formatKey = (date: Date) => date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  const formatLabel = (date: Date) =>
-    date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
-  const counts = new Map<string, number>();
-  rows.forEach((row) => {
-    const key = formatKey(new Date(row.created_at));
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  });
-
-  return Array.from({ length: dayCount }, (_, index) => {
-    const day = new Date(first.getTime() + index * dayMs);
-    return { label: formatLabel(day), count: counts.get(formatKey(day)) ?? 0 };
-  });
 }
 
 export interface BdmDashboard {

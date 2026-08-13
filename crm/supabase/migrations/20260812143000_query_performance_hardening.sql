@@ -200,6 +200,21 @@ comment on function public.accounts_register_page(text, text, integer, integer) 
 -- Admin dashboard: one snapshot generated next to the data.
 -- ---------------------------------------------------------------------------
 
+create table if not exists public.admin_dashboard_cache (
+  range_from timestamptz not null,
+  range_to timestamptz not null,
+  payload jsonb not null,
+  generated_at timestamptz not null default now(),
+  primary key (range_from, range_to)
+);
+
+alter table public.admin_dashboard_cache enable row level security;
+alter table public.admin_dashboard_cache force row level security;
+
+-- No direct table policies: snapshots contain company-wide analytics and are
+-- reachable only through the authorization-checked functions below.
+revoke all on public.admin_dashboard_cache from public, anon, authenticated;
+
 create or replace function public.admin_dashboard_snapshot(
   p_from timestamptz,
   p_to timestamptz
@@ -224,6 +239,17 @@ begin
 
   if v_from is null or v_to is null or v_to <= v_from then
     raise exception 'Invalid dashboard date range.' using errcode = '22023';
+  end if;
+
+  select cache.payload
+    into v_result
+    from public.admin_dashboard_cache cache
+   where cache.range_from = v_from
+     and cache.range_to = v_to
+     and cache.generated_at >= v_now - interval '1 hour';
+
+  if v_result is not null then
+    return v_result;
   end if;
 
   v_today_end := v_today_start + interval '1 day';
@@ -388,12 +414,38 @@ begin
   ) into v_result
   from lead_counts counts;
 
+  insert into public.admin_dashboard_cache (range_from, range_to, payload, generated_at)
+  values (v_from, v_to, v_result, v_now)
+  on conflict (range_from, range_to) do update
+    set payload = excluded.payload,
+        generated_at = excluded.generated_at;
+
   return v_result;
+end;
+$$;
+
+create or replace function public.refresh_admin_dashboard_cache()
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+begin
+  if not app.is_admin() then
+    raise exception 'Dashboard refresh is Admin-only.' using errcode = '42501';
+  end if;
+
+  delete from public.admin_dashboard_cache;
 end;
 $$;
 
 revoke all on function public.admin_dashboard_snapshot(timestamptz, timestamptz) from public;
 grant execute on function public.admin_dashboard_snapshot(timestamptz, timestamptz) to authenticated;
+revoke all on function public.refresh_admin_dashboard_cache() from public;
+grant execute on function public.refresh_admin_dashboard_cache() to authenticated;
 
 comment on function public.admin_dashboard_snapshot(timestamptz, timestamptz) is
-  'Admin-only dashboard snapshot; replaces many HTTP count requests and client-side aggregation.';
+  'Admin-only dashboard snapshot, cached per date range for one hour.';
+
+comment on function public.refresh_admin_dashboard_cache() is
+  'Admin-only manual invalidation of cached dashboard snapshots.';

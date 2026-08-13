@@ -110,6 +110,20 @@ export async function updateOwnProfileAction(
   });
 }
 
+/** Clears the shared one-hour Admin analytics cache and reloads the dashboard. */
+export async function refreshAdminDashboardAction(): Promise<void> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('refresh_admin_dashboard_cache');
+
+  if (error) {
+    throw new AppError('INTERNAL', 'Could not refresh dashboard analytics.', { cause: error });
+  }
+
+  revalidatePath('/dashboard');
+  revalidatePath('/reports');
+}
+
 /**
  * Runtime settings, e.g. the upload size limit (§5.3, §11.7).
  *

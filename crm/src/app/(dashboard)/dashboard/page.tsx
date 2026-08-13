@@ -10,6 +10,7 @@ import {
   LuHardHat,
   LuMapPin,
   LuPencilRuler,
+  LuRefreshCw,
   LuUserPlus,
   LuUsers,
 } from 'react-icons/lu';
@@ -32,6 +33,7 @@ import {
   LeadTrendChart,
 } from '@/components/dashboard/lead-analytics-charts';
 import { DateRangeFilter } from '@/components/dashboard/date-range-filter';
+import { refreshAdminDashboardAction } from '@/server/actions/admin';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -103,7 +105,19 @@ async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
 
   return (
     <div className="space-y-6">
-      <DateRangeFilter from={dateRange.from} to={dateRange.to} />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <DateRangeFilter from={dateRange.from} to={dateRange.to} />
+        <form action={refreshAdminDashboardAction}>
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink transition hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <LuRefreshCw className="size-4" />
+            Refresh now
+          </button>
+        </form>
+      </div>
+      <p className="-mt-3 text-xs text-muted">Analytics are cached for one hour. Refresh anytime for current data.</p>
 
       <Section title="New leads" hint={analyticsDescription}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

@@ -996,6 +996,20 @@ export type Database = {
     };
     Views: Record<never, never>;
     Functions: {
+      /** Complete Admin analytics snapshot, aggregated inside PostgreSQL. */
+      admin_dashboard_snapshot: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      refresh_admin_dashboard_cache: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      /** Bounded Admin accounts register page, aggregated inside PostgreSQL. */
+      accounts_register_page: {
+        Args: { p_tab?: string; p_search?: string | null; p_offset?: number; p_limit?: number };
+        Returns: Json;
+      };
       record_sign_in: {
         Args: Record<string, never>;
         Returns: undefined;

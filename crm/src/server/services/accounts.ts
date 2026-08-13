@@ -53,33 +53,6 @@ export interface AccountListItem {
   account: LeadAccountRow | null;
 }
 
-/** The small lead projection used by the paginated register query. */
-interface AccountLeadRow {
-  id: string;
-  lead_code: string;
-  customer_name: string;
-  mobile_country_code: string;
-  mobile_normalized: string;
-  email: string | null;
-  location_text: string | null;
-  site_address: string | null;
-  requirement_summary: string | null;
-  status: LeadStatus;
-  assigned_bdm: { full_name: string } | null;
-}
-
-interface AccountExecutionRow {
-  lead_id: string;
-  status: string;
-  completed_at: string | null;
-}
-
-const LEAD_SELECT = `
-  id, lead_code, customer_name, mobile_country_code, mobile_normalized, email,
-  location_text, site_address, requirement_summary, status,
-  assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name)
-`;
-
 /**
  * The Accounts register.
  *
@@ -107,170 +80,31 @@ export async function listAccounts(
   const pageSize = Math.min(100, Math.max(5, filters.pageSize ?? 25));
   const tab = filters.tab ?? 'READY';
 
-  // Do not filter 10k+ leads through embedded PostgREST relationships. That
-  // produces an expensive join plus exact-count plan and can exceed the hosted
-  // database statement timeout. Resolve the usually-small account/execution
-  // scope first, then paginate the indexed leads table itself.
-  const [scopedLeadIds, totals] = await Promise.all([
-    accountScopeLeadIds(supabase, tab),
-    accountTotals(user, supabase),
-  ]);
-
-  if (scopedLeadIds?.length === 0) {
-    return { items: [], total: 0, page, pageSize, totals };
-  }
-
-  let query = supabase.from('leads').select(LEAD_SELECT, { count: 'exact' });
-  if (scopedLeadIds) query = query.in('id', scopedLeadIds);
-
-  const search = filters.search?.trim();
-  if (search) {
-    const digits = search.replace(/\D/g, '');
-    const escaped = search.replace(/[%_,]/g, ' ');
-    query =
-      digits.length >= 4
-        ? query.or(
-            `mobile_normalized.ilike.%${digits}%,customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%`,
-          )
-        : query.or(`customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%`);
-  }
-
   const from = (page - 1) * pageSize;
-  const { data, count, error } = await query
-    .order('updated_at', { ascending: false })
-    .range(from, from + pageSize - 1);
+  const { data, error } = await supabase.rpc('accounts_register_page', {
+    p_tab: tab,
+    p_search: filters.search?.trim() || null,
+    p_offset: from,
+    p_limit: pageSize,
+  });
 
-  if (error) throw new AppError('INTERNAL', 'Could not load accounts.', { cause: error });
-
-  const leadRows = (data ?? []) as unknown as AccountLeadRow[];
-  const leadIds = leadRows.map((row) => row.id);
-  if (leadIds.length === 0) {
-    return { items: [], total: count ?? 0, page, pageSize, totals };
+  if (error || !data || Array.isArray(data) || typeof data !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load accounts.', { cause: error });
   }
 
-  const [accountsResult, executionsResult] = await Promise.all([
-    supabase.from('lead_accounts').select('*').in('lead_id', leadIds),
-    supabase
-      .from('execution_projects')
-      .select('lead_id, status, completed_at')
-      .in('lead_id', leadIds)
-      .order('created_at', { ascending: false }),
-  ]);
-
-  if (accountsResult.error || executionsResult.error) {
-    throw new AppError('INTERNAL', 'Could not load account details.', {
-      cause: accountsResult.error ?? executionsResult.error,
-    });
-  }
-
-  const accountsByLead = new Map(
-    (accountsResult.data ?? []).map((account) => [account.lead_id, account]),
-  );
-  const executionsByLead = new Map<string, AccountExecutionRow>();
-  for (const execution of (executionsResult.data ?? []) as AccountExecutionRow[]) {
-    // Results are newest first, so the first project is the one displayed.
-    if (!executionsByLead.has(execution.lead_id)) {
-      executionsByLead.set(execution.lead_id, execution);
-    }
-  }
-
-  const items = leadRows.map((row) =>
-    toListItem(row, accountsByLead.get(row.id) ?? null, executionsByLead.get(row.id) ?? null),
-  );
-
-  return { items, total: count ?? 0, page, pageSize, totals };
-}
-
-function toListItem(
-  row: AccountLeadRow,
-  account: LeadAccountRow | null,
-  execution: AccountExecutionRow | null,
-): AccountListItem {
-  return {
-    lead_id: row.id,
-    lead_code: row.lead_code,
-    customer_name: row.customer_name,
-    mobile_country_code: row.mobile_country_code,
-    mobile_normalized: row.mobile_normalized,
-    email: row.email,
-    location_text: row.location_text,
-    site_address: row.site_address,
-    requirement_summary: row.requirement_summary,
-    lead_status: row.status,
-    owner_name: row.assigned_bdm?.full_name ?? null,
-    execution_status: execution?.status ?? null,
-    execution_completed_at: execution?.completed_at ?? null,
-    account,
+  const result = data as unknown as {
+    items: AccountListItem[];
+    total: number;
+    totals: { agreed: number; received: number; balance: number };
   };
-}
 
-/**
- * Lead ids eligible for a register tab. `null` means the ALL tab and therefore
- * deliberately leaves the paginated lead query unscoped.
- */
-async function accountScopeLeadIds(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  tab: AccountsTab,
-): Promise<string[] | null> {
-  if (tab === 'ALL') return null;
-
-  if (tab === 'OPEN' || tab === 'CLOSED') {
-    let query = supabase.from('lead_accounts').select('lead_id');
-    query = tab === 'OPEN' ? query.is('closed_at', null) : query.not('closed_at', 'is', null);
-    const { data, error } = await query;
-
-    if (error) throw new AppError('INTERNAL', 'Could not load the account register.', { cause: error });
-    return [...new Set((data ?? []).map((row) => row.lead_id))];
-  }
-
-  const [completedResult, recordedResult] = await Promise.all([
-    supabase.from('execution_projects').select('lead_id').eq('status', 'COMPLETED'),
-    supabase.from('lead_accounts').select('lead_id'),
-  ]);
-
-  if (completedResult.error || recordedResult.error) {
-    throw new AppError('INTERNAL', 'Could not load jobs ready to bill.', {
-      cause: completedResult.error ?? recordedResult.error,
-    });
-  }
-
-  const recorded = new Set((recordedResult.data ?? []).map((row) => row.lead_id));
-  return [
-    ...new Set(
-      (completedResult.data ?? [])
-        .map((row) => row.lead_id)
-        .filter((leadId) => !recorded.has(leadId)),
-    ),
-  ];
-}
-
-/**
- * Register-wide totals.
- *
- * Computed over every account row rather than the current page — a page total
- * that changes as you paginate is worse than no total at all.
- */
-async function accountTotals(
-  user: SessionUser,
-  client?: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ agreed: number; received: number; balance: number }> {
-  if (!canViewAccounts(user)) return { agreed: 0, received: 0, balance: 0 };
-
-  const supabase = client ?? (await createClient());
-  const { data, error } = await supabase
-    .from('lead_accounts')
-    .select('total_amount, received_amount, balance_amount');
-
-  if (error) throw new AppError('INTERNAL', 'Could not load account totals.', { cause: error });
-
-  return (data ?? []).reduce(
-    (sum, row) => ({
-      agreed: sum.agreed + Number(row.total_amount ?? 0),
-      received: sum.received + Number(row.received_amount ?? 0),
-      balance: sum.balance + Number(row.balance_amount ?? 0),
-    }),
-    { agreed: 0, received: 0, balance: 0 },
-  );
+  return {
+    items: result.items ?? [],
+    total: result.total ?? 0,
+    page,
+    pageSize,
+    totals: result.totals ?? { agreed: 0, received: 0, balance: 0 },
+  };
 }
 
 export async function getAccountForLead(
