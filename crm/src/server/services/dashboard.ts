@@ -78,6 +78,45 @@ export interface AdminDashboard {
     created_at: string;
     actor: string | null;
   }[];
+  operational: AdminOperationalKpis;
+}
+
+export interface DashboardBreakdownItem {
+  label: string;
+  count: number;
+}
+
+export interface AdminOperationalKpis {
+  leads: { today: number; all: number; not_interested: number; invalid: number; breakdown: DashboardBreakdownItem[] };
+  sales: {
+    contacted: number;
+    uncontacted: number;
+    assigned: number;
+    unassigned: number;
+    members: Array<{
+      id: string;
+      name: string;
+      assigned: number;
+      contacted: number;
+      uncontacted: number;
+      interested: number;
+      not_interested: number;
+      invalid: number;
+    }>;
+  };
+  site_visits: { total: number; today: number; completed: number; due: number; breakdown: DashboardBreakdownItem[] };
+  designs: { in_process: number; completed: number; overdue: number; approval_pending: number; breakdown: DashboardBreakdownItem[] };
+  follow_ups: { pending: number; today: number; completed: number; overdue: number; breakdown: DashboardBreakdownItem[] };
+  execution: { in_progress: number; completed: number; blocked: number; overdue: number; breakdown: DashboardBreakdownItem[] };
+  trends: Array<{
+    day: string;
+    leads: number;
+    sales: number;
+    site_visits: number;
+    designs: number;
+    follow_ups: number;
+    execution: number;
+  }>;
 }
 
 export async function getAdminDashboard(
@@ -89,13 +128,23 @@ export async function getAdminDashboard(
   const supabase = await createClient();
   const analyticsRange = resolveAnalyticsRange(dateRange);
 
-  const { data, error } = await supabase.rpc('admin_dashboard_snapshot', {
-    p_from: analyticsRange.from,
-    p_to: analyticsRange.to,
-  });
+  const [{ data, error }, { data: operationalData, error: operationalError }] = await Promise.all([
+    supabase.rpc('admin_dashboard_snapshot', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_operational_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+  ]);
 
   if (error || !data || Array.isArray(data) || typeof data !== 'object') {
     throw new AppError('INTERNAL', 'Could not load the Admin dashboard.', { cause: error });
+  }
+
+  if (operationalError || !operationalData || Array.isArray(operationalData) || typeof operationalData !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load operational dashboard KPIs.', { cause: operationalError });
   }
 
   const snapshot = data as unknown as {
@@ -135,6 +184,7 @@ export async function getAdminDashboard(
     visitsToday: snapshot.visits_today ?? 0,
     visitsOverdue: snapshot.visits_overdue ?? 0,
     recentActivity: snapshot.recent_activity ?? [],
+    operational: operationalData as unknown as AdminOperationalKpis,
   };
 }
 

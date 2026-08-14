@@ -32,6 +32,7 @@ import {
   LeadTrendChart,
 } from '@/components/dashboard/lead-analytics-charts';
 import { AnalyticsControls } from '@/components/dashboard/analytics-controls';
+import { OperationalKpis } from '@/components/dashboard/operational-kpis';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -118,6 +119,10 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
         to={dateRange.to}
       />
 
+      <OperationalKpis data={data.operational} rangeLabel={analyticsDescription} />
+
+      {false ? (
+      <>
       <Section title="New leads" hint={analyticsDescription}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile
@@ -254,6 +259,9 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
           </Card>
         </div>
       </Section>
+
+      </>
+      ) : null}
 
       <Section title="Recent activity">
         <Card>

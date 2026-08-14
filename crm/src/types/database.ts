@@ -1001,6 +1001,10 @@ export type Database = {
         Args: { p_from: string; p_to: string };
         Returns: Json;
       };
+      admin_dashboard_operational_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
       refresh_admin_dashboard_cache: {
         Args: Record<string, never>;
         Returns: undefined;
