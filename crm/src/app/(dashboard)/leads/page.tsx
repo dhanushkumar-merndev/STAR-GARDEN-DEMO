@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { LuPlus, LuUsers } from 'react-icons/lu';
+import { LuPlus, LuSlidersHorizontal, LuUsers } from 'react-icons/lu';
 import { requirePageRole } from '@/lib/auth/session';
 import { listAssignableBdms, listLeads, type LeadListFilters } from '@/server/services/leads';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
@@ -8,6 +8,7 @@ import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
 import { formatDue, formatMobileDisplay } from '@/components/leads/helpers';
 import type { LeadStatus } from '@/types/database';
 import { LeadFilterForm } from '@/components/leads/lead-filter-form';
+import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Leads' };
 
@@ -56,16 +57,21 @@ export default async function LeadsPage({
         title="Leads"
         subtitle={`${total} ${total === 1 ? 'lead' : 'leads'}${scopeLabel ? ` · ${scopeLabel}` : ''}`}
         action={
-          <Link href="/leads/new">
-            <Button className="gap-1.5">
-              <LuPlus className="size-4" />
-              New lead
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/leads/new">
+              <Button className="gap-1.5"><LuPlus className="size-4" />New lead</Button>
+            </Link>
+            <MobileSheet label="Filter" title="Filter leads" description="Search and narrow this lead view." icon={<LuSlidersHorizontal className="size-4" />}>
+              <LeadFilterForm isAdmin={user.isAdmin} bdms={bdms} initial={{
+                q: filters.search ?? '', status: filters.status ?? 'ALL', source: filters.source ?? 'ALL',
+                assignedTo: filters.assignedTo ?? 'ALL', scope: filters.scope ?? (user.isAdmin ? 'ALL' : 'MINE'),
+              }} />
+            </MobileSheet>
+          </div>
         }
       />
 
-      <Card className="mb-4">
+      <Card className="mb-4 hidden lg:block">
         <LeadFilterForm
           key={`${filters.search ?? ''}|${filters.status ?? 'ALL'}|${filters.source ?? 'ALL'}|${filters.assignedTo ?? 'ALL'}|${filters.scope ?? ''}`}
           isAdmin={user.isAdmin}

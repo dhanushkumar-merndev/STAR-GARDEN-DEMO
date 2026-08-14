@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import {
   LuArrowLeft,
   LuClipboardList,
+  LuInfo,
   LuMail,
   LuMapPin,
   LuMessageCircle,
@@ -39,10 +40,11 @@ import {
   StartDesignFromVisitButton,
   StartExecutionDialog,
 } from '@/components/leads/lead-dialogs';
-import { CompleteFollowUpButton } from '@/components/leads/follow-up-actions';
+import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
 import { formatDateTime, formatDue, humanizeEnum } from '@/lib/utils/format';
 import { formatMobile, telHref } from '@/lib/utils/phone';
 import type { CallOutcome } from '@/types/database';
+import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Lead' };
 
@@ -197,7 +199,19 @@ export default async function LeadDetailPage({
               </h1>
               <p className="mt-0.5 text-sm text-ink-muted">{lead.lead_code}</p>
             </div>
-            <LeadStatusBadge value={lead.status} />
+            <div className="flex items-center gap-2">
+              <MobileSheet label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
+                <dl className="space-y-3 text-sm">
+                  <CustomerDetail label="Customer" value={lead.customer_name} />
+                  <CustomerDetail label="Mobile" value={mobile} href={telHref(lead.mobile_country_code, lead.mobile_normalized)} />
+                  {lead.email ? <CustomerDetail label="Email" value={lead.email} href={`mailto:${lead.email}`} /> : null}
+                  <CustomerDetail label="Owner" value={owner?.full_name ?? 'Unassigned'} />
+                  <CustomerDetail label="Location" value={lead.site_address ?? lead.location_text ?? 'Not provided'} />
+                  <CustomerDetail label="Requirement" value={lead.requirement_summary ?? 'Not provided'} multiline />
+                </dl>
+              </MobileSheet>
+              <LeadStatusBadge value={lead.status} />
+            </div>
           </div>
 
           <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
@@ -266,7 +280,7 @@ export default async function LeadDetailPage({
 
       <nav
         aria-label="Lead sections"
-        className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
+        className="-mx-3 flex snap-x gap-1 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0"
       >
         {LEAD_DETAIL_TABS.filter((tab) => user.isAdmin || tab.id !== 'customer-access').map((tab) => {
           const selected = activeTab === tab.id;
@@ -291,7 +305,7 @@ export default async function LeadDetailPage({
                 key={tab.id}
                 aria-disabled="true"
                 title={lockMessage}
-                className="shrink-0 cursor-not-allowed rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm font-medium text-ink-subtle"
+                className="shrink-0 snap-start cursor-not-allowed rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm font-medium whitespace-nowrap text-ink-subtle"
               >
                 {tab.label}
               </span>
@@ -303,7 +317,7 @@ export default async function LeadDetailPage({
               key={tab.id}
               href={`/leads/${lead.id}?tab=${tab.id}`}
               aria-current={selected ? 'page' : undefined}
-              className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 snap-start items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
                 selected
                   ? 'bg-brand-600 text-white'
                   : 'border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink'
@@ -313,7 +327,7 @@ export default async function LeadDetailPage({
               {needsAttention ? (
                 <span
                   aria-label={tab.id === 'design' ? 'Design ready for review' : 'Completed site visit'}
-                  className="size-2 rounded-full bg-danger"
+                  className="size-2 rounded-full bg-[--color-warn]"
                 />
               ) : null}
             </Link>
@@ -323,7 +337,7 @@ export default async function LeadDetailPage({
 
       {/* Contact and requirement */}
       {activeTab === 'details' ? <>
-      <Card>
+      <Card className="hidden lg:block">
         <CardHeader
           title="Contact and requirement"
           action={
@@ -473,7 +487,12 @@ export default async function LeadDetailPage({
                     {followUp.status !== 'COMPLETED' && followUp.status !== 'CANCELLED' ? (
                       <>
                         <DueBadge label={followUpDue.label} tone={followUpDue.tone} />
-                        <CompleteFollowUpButton followUpId={followUp.id} />
+                        <FollowUpOutcomeActions
+                          followUpId={followUp.id}
+                          leadId={lead.id}
+                          customerName={lead.customer_name}
+                          lostReasons={lossReasons}
+                        />
                       </>
                     ) : null}
                   </li>
@@ -784,4 +803,17 @@ function outcomeTone(outcome: CallOutcome) {
     default:
       return 'warn' as const;
   }
+}
+
+function CustomerDetail({ label, value, href, multiline = false }: {
+  label: string; value: string; href?: string; multiline?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface-muted px-3 py-2.5">
+      <dt className="mb-1 text-xs font-medium text-ink-muted">{label}</dt>
+      <dd className={`font-medium ${multiline ? 'whitespace-pre-wrap text-ink' : 'break-words text-ink'}`}>
+        {href ? <a href={href} className="text-brand-700 hover:underline">{value}</a> : value}
+      </dd>
+    </div>
+  );
 }

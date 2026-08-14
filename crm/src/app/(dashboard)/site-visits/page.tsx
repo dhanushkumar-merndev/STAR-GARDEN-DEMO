@@ -45,7 +45,7 @@ export default async function SiteVisitsPage({
     <>
       <PageHeader title="Site visits" subtitle={`${visits.length} in this view`} />
 
-      <nav className="no-scrollbar mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Filter">
+      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
         {SCOPES.map((option) => {
           const active = option.value === scope;
           return (
@@ -55,8 +55,8 @@ export default async function SiteVisitsPage({
               aria-current={active ? 'page' : undefined}
               className={
                 active
-                  ? 'tap flex items-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex items-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
+                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
+                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
               }
             >
               {option.label}

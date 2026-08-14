@@ -109,6 +109,36 @@ export async function completeFollowUpAction(
   });
 }
 
+/** Records the customer's decision and closes the reminder in one UI action. */
+export async function completeFollowUpWithDispositionAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ leadId: string; kind: DispositionResult['nextStep']['kind'] }>> {
+  return actionResult(async () => {
+    const user = await requireUser();
+    const values = formDataToObject(formData);
+    const disposition = parseOrThrow(dispositionSchema_input, values);
+    const completion = parseOrThrow(completeFollowUpSchema, values);
+
+    const result = await recordDispositionService(user, disposition);
+    const followUp = await completeFollowUpService(user, {
+      ...completion,
+      notes:
+        completion.notes ??
+        (disposition.disposition === 'INTERESTED'
+          ? 'Customer marked Interested.'
+          : 'Customer marked Not interested.'),
+    });
+
+    revalidatePath(`/leads/${followUp.lead_id}`);
+    revalidatePath('/leads');
+    revalidatePath('/follow-ups');
+    revalidatePath('/dashboard');
+
+    return { leadId: followUp.lead_id, kind: result.nextStep.kind };
+  });
+}
+
 export async function cancelFollowUpAction(
   _prev: unknown,
   formData: FormData,

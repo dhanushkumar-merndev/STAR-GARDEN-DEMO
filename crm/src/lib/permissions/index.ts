@@ -119,7 +119,7 @@ export function canUploadDesignVersion(
   project: Pick<DesignProjectRow, 'assigned_designer_id' | 'status'>,
 ): boolean {
   if (project.status === 'APPROVED' || project.status === 'CANCELLED') return false;
-  return isAdmin(actor) || project.assigned_designer_id === actor.id;
+  return actor.role === 'DESIGNER' && project.assigned_designer_id === actor.id;
 }
 
 /** Review, revision and approval are the reviewer's side of the workflow (§7.2). */
@@ -181,7 +181,6 @@ export function canOverrideCompletion(actor: Actor): boolean {
 
 const CATEGORIES_BY_ROLE: Record<UserRole, readonly FileCategory[]> = {
   ADMIN: [
-    'DESIGN_VERSION',
     'DESIGN_SOURCE',
     'SITE_VISIT_ATTACHMENT',
     'EXECUTION_EVIDENCE',

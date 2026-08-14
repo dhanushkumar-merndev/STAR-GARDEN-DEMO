@@ -4,6 +4,8 @@ import { getAdminDashboard } from '@/server/services/dashboard';
 import { listAssignableBdms } from '@/server/services/leads';
 import { Card, CardBody, CardHeader, PageHeader, Select, StatTile } from '@/components/ui';
 import { humanizeEnum } from '@/lib/utils/format';
+import { LuDownload } from 'react-icons/lu';
+import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Reports' };
 
@@ -21,7 +23,15 @@ export default async function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" subtitle="Pipeline health and data export" />
+      <PageHeader
+        title="Reports"
+        subtitle="Pipeline health and data export"
+        action={
+          <MobileSheet label="Export" title="Export to CSV" description="Choose filters, then download the file." icon={<LuDownload className="size-4" />}>
+            <ExportForm bdms={bdms} />
+          </MobileSheet>
+        }
+      />
 
       <div className="space-y-4">
         <section>
@@ -88,73 +98,40 @@ export default async function ReportsPage() {
           </Card>
         </div>
 
-        <Card>
+        <Card className="hidden lg:block">
           <CardHeader
             title="Export to CSV"
             description="Every export is recorded in the audit log with its filters."
           />
           <CardBody>
-            <form action="/api/reports/export" method="GET" className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1.5">
-                <span className="block text-sm font-medium text-ink">Report</span>
-                <Select
-                  name="report"
-                  className="h-11 w-full rounded-lg border border-line bg-surface px-3"
-                  defaultValue="leads"
-                >
-                  <option value="leads">Leads</option>
-                  <option value="activities">Call activity</option>
-                </Select>
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="block text-sm font-medium text-ink">Owner</span>
-                <Select
-                  name="assignedTo"
-                  className="h-11 w-full rounded-lg border border-line bg-surface px-3"
-                  defaultValue="ALL"
-                >
-                  <option value="ALL">Everyone</option>
-                  <option value="UNASSIGNED">Unassigned</option>
-                  {bdms.map((bdm) => (
-                    <option key={bdm.id} value={bdm.id}>
-                      {bdm.full_name}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="block text-sm font-medium text-ink">From</span>
-                <input
-                  type="date"
-                  name="from"
-                  className="h-11 w-full rounded-lg border border-line bg-surface px-3"
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="block text-sm font-medium text-ink">To</span>
-                <input
-                  type="date"
-                  name="to"
-                  className="h-11 w-full rounded-lg border border-line bg-surface px-3"
-                />
-              </label>
-
-              <div className="sm:col-span-2">
-                <button
-                  type="submit"
-                  className="tap inline-flex items-center rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
-                >
-                  Download CSV
-                </button>
-              </div>
-            </form>
+            <ExportForm bdms={bdms} />
           </CardBody>
         </Card>
       </div>
     </>
+  );
+}
+
+function ExportForm({ bdms }: { bdms: Awaited<ReturnType<typeof listAssignableBdms>> }) {
+  return (
+    <form action="/api/reports/export" method="GET" className="grid gap-3 sm:grid-cols-2">
+      <label className="space-y-1.5">
+        <span className="block text-sm font-medium text-ink">Report</span>
+        <Select name="report" className="h-11 w-full" defaultValue="leads">
+          <option value="leads">Leads</option><option value="activities">Call activity</option>
+        </Select>
+      </label>
+      <label className="space-y-1.5">
+        <span className="block text-sm font-medium text-ink">Owner</span>
+        <Select name="assignedTo" className="h-11 w-full" defaultValue="ALL">
+          <option value="ALL">Everyone</option><option value="UNASSIGNED">Unassigned</option>
+          {bdms.map((bdm) => <option key={bdm.id} value={bdm.id}>{bdm.full_name}</option>)}
+        </Select>
+      </label>
+      <label className="space-y-1.5"><span className="block text-sm font-medium text-ink">From</span><input type="date" name="from" className="h-11 w-full rounded-lg border border-line bg-surface px-3" /></label>
+      <label className="space-y-1.5"><span className="block text-sm font-medium text-ink">To</span><input type="date" name="to" className="h-11 w-full rounded-lg border border-line bg-surface px-3" /></label>
+      <div className="sm:col-span-2"><button type="submit" className="tap inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">Download CSV</button></div>
+    </form>
   );
 }
 

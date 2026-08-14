@@ -10,7 +10,6 @@ import {
   LuHardHat,
   LuMapPin,
   LuPencilRuler,
-  LuRefreshCw,
   LuUserPlus,
   LuUsers,
 } from 'react-icons/lu';
@@ -32,8 +31,7 @@ import {
   LeadShareChart,
   LeadTrendChart,
 } from '@/components/dashboard/lead-analytics-charts';
-import { DateRangeFilter } from '@/components/dashboard/date-range-filter';
-import { refreshAdminDashboardAction } from '@/server/actions/admin';
+import { AnalyticsControls } from '@/components/dashboard/analytics-controls';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -59,14 +57,16 @@ export default async function DashboardPage({
 
   return (
     <>
-      <PageHeader
-        title={`Good ${greeting()}, ${user.profile.full_name.split(' ')[0]}`}
-        subtitle={new Date().toLocaleDateString('en-IN', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        })}
-      />
+      {user.role !== 'ADMIN' ? (
+        <PageHeader
+          title={`Good ${greeting()}, ${user.profile.full_name.split(' ')[0]}`}
+          subtitle={new Date().toLocaleDateString('en-IN', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+          })}
+        />
+      ) : null}
 
       {denied ? (
         <div className="mb-4">
@@ -76,7 +76,9 @@ export default async function DashboardPage({
         </div>
       ) : null}
 
-      {user.role === 'ADMIN' ? <AdminView dateRange={dateRange} /> : null}
+      {user.role === 'ADMIN' ? (
+        <AdminView dateRange={dateRange} firstName={user.profile.full_name.split(' ')[0] || 'there'} />
+      ) : null}
       {user.role === 'BDM' ? <BdmView /> : null}
       {user.role === 'DESIGNER' ? <DesignerView /> : null}
       {user.role === 'EXECUTION' ? <ExecutionView /> : null}
@@ -95,7 +97,7 @@ function greeting(): string {
 /* Admin (§12.1)                                                               */
 /* -------------------------------------------------------------------------- */
 
-async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
+async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRange; firstName: string }) {
   const user = await requirePageUser();
   const data = await getAdminDashboard(user, dateRange);
   const analyticsDescription = dateRange.from || dateRange.to ? 'Selected date range' : 'Last 90 days';
@@ -105,19 +107,16 @@ async function AdminView({ dateRange }: { dateRange: DashboardDateRange }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <DateRangeFilter from={dateRange.from} to={dateRange.to} />
-        <form action={refreshAdminDashboardAction}>
-          <button
-            type="submit"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink transition hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-          >
-            <LuRefreshCw className="size-4" />
-            Refresh now
-          </button>
-        </form>
-      </div>
-      <p className="-mt-3 text-xs text-muted">Analytics are cached for one hour. Refresh anytime for current data.</p>
+      <AnalyticsControls
+        firstName={firstName}
+        dateLabel={new Date().toLocaleDateString('en-IN', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })}
+        from={dateRange.from}
+        to={dateRange.to}
+      />
 
       <Section title="New leads" hint={analyticsDescription}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

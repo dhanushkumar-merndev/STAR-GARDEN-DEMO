@@ -47,7 +47,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
       ref={ref}
       type={type}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium transition-colors',
+        'inline-flex max-w-full items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
         'disabled:pointer-events-none disabled:opacity-50',
         BUTTON_VARIANTS[variant],
         BUTTON_SIZES[size],
@@ -79,18 +79,18 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-start justify-between gap-3 border-b border-line px-4 py-3', className)}>
-      <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold text-ink">{title}</h2>
+    <div className={cn('flex flex-wrap items-start justify-between gap-3 border-b border-line px-3 py-3 sm:px-4', className)}>
+      <div className="min-w-0 flex-1 basis-48">
+        <h2 className="text-sm font-semibold break-words text-ink">{title}</h2>
         {description ? <p className="mt-0.5 text-xs text-ink-muted">{description}</p> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </div>
   );
 }
 
 export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('p-4', className)} {...props} />;
+  return <div className={cn('p-3 sm:p-4', className)} {...props} />;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -259,14 +259,14 @@ export function PageHeader({
   return (
     <header
       aria-label={title}
-      className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+      className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2"
     >
       {subtitle ? (
-        <p className="min-w-0 text-sm text-ink-muted">{subtitle}</p>
+        <p className="min-w-0 flex-1 basis-40 text-sm break-words text-ink-muted">{subtitle}</p>
       ) : (
         <span className="min-w-0" />
       )}
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </header>
   );
 }
@@ -284,7 +284,7 @@ export function EmptyState({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center px-4 py-10 text-center sm:px-6 sm:py-12">
       {icon ? <div className="mb-3 text-ink-subtle">{icon}</div> : null}
       <p className="text-sm font-medium text-ink">{title}</p>
       {description ? <p className="mt-1 max-w-sm text-sm text-ink-muted">{description}</p> : null}
@@ -353,7 +353,7 @@ export function StatTile({
           </span>
         ) : null}
       </div>
-      <p className={cn('mt-1.5 text-3xl font-semibold tracking-tight tabular-nums', STAT_VALUE_CLASSES[tone])}>
+      <p className={cn('mt-1.5 text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl', STAT_VALUE_CLASSES[tone])}>
         {value}
       </p>
       {hint ? <p className="mt-1 text-xs leading-snug text-ink-subtle">{hint}</p> : null}

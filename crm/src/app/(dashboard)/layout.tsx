@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { LuBell } from 'react-icons/lu';
 import { requirePageUser, ROLE_LABELS } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
 import { DesktopNav, HeaderTitle, MobileNav } from '@/components/shell/navigation';
 import { UserMenu } from '@/components/shell/user-menu';
+import { NotificationMenu } from '@/components/notifications/notification-menu';
 
 /**
  * Authenticated application shell.
@@ -22,11 +22,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const user = await requirePageUser();
 
   const supabase = await createClient();
-  const { count } = await supabase
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .is('read_at', null);
+  const [{ count }, { data: notificationPreviews }] = await Promise.all([
+    supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .is('read_at', null),
+    supabase
+      .from('notifications')
+      .select('id, title, body, entity_type, entity_id, read_at, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(12),
+  ]);
 
   const unread = count ?? 0;
 
@@ -36,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="crm-header-content flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
           <Link
             href="/dashboard"
-            className="flex shrink-0 items-center"
+            className="hidden shrink-0 items-center lg:flex"
             aria-label="Star Gardens CRM home"
           >
             <Image
@@ -51,24 +59,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
           {/* Reads as "logo, then where you are" rather than as two unrelated
               labels sharing a bar. */}
-          <span className="hidden h-6 w-px shrink-0 bg-line sm:block" aria-hidden="true" />
+          <span className="hidden h-6 w-px shrink-0 bg-line lg:block" aria-hidden="true" />
 
           <div className="min-w-0 flex-1">
             <HeaderTitle />
           </div>
 
-          <Link
-            href="/notifications"
-            className="tap relative flex shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
-            aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
-          >
-            <LuBell className="size-5" />
-            {unread > 0 ? (
-              <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white tabular-nums">
-                {unread > 99 ? '99+' : unread}
-              </span>
-            ) : null}
-          </Link>
+          <NotificationMenu notifications={notificationPreviews ?? []} unreadCount={unread} />
 
           <UserMenu
             fullName={user.profile.full_name}
@@ -83,7 +80,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <DesktopNav role={user.role} />
 
         {/* pb-20 keeps the last row clear of the fixed mobile nav bar. */}
-        <main className="min-w-0 flex-1 px-3 pt-4 pb-20 sm:px-4 lg:px-6 lg:pb-8">
+        <main className="min-w-0 flex-1 overflow-x-clip px-3 pt-4 pb-20 sm:px-4 lg:px-6 lg:pb-8">
           <div className="crm-main-content mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

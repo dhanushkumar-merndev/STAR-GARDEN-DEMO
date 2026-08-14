@@ -5,8 +5,9 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listFollowUps, type FollowUpScope } from '@/server/services/follow-ups';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, FollowUpStatusBadge } from '@/components/status';
-import { CompleteFollowUpButton } from '@/components/leads/follow-up-actions';
+import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
 import { WeeklyFollowUpCalendar } from '@/components/follow-ups/weekly-calendar';
+import { getConfigOptions } from '@/lib/settings';
 import { formatDue, formatDateTime } from '@/lib/utils/format';
 import { formatMobile, telHref } from '@/lib/utils/phone';
 
@@ -30,9 +31,10 @@ export default async function FollowUpsPage({
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'OVERDUE') as FollowUpScope;
 
-  const [items, calendarItems] = await Promise.all([
+  const [items, calendarItems, lostReasons] = await Promise.all([
     listFollowUps(user, { scope, limit: 100 }),
     listFollowUps(user, { scope: 'ALL', limit: 100 }),
+    getConfigOptions('lost_reason'),
   ]);
 
   return (
@@ -42,7 +44,7 @@ export default async function FollowUpsPage({
         subtitle={user.isAdmin ? 'Everyone’s follow-ups' : 'Assigned to you'}
       />
 
-      <nav className="no-scrollbar mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Filter">
+      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
         {SCOPES.map((option) => {
           const active = option.value === scope;
           return (
@@ -52,8 +54,8 @@ export default async function FollowUpsPage({
               aria-current={active ? 'page' : undefined}
               className={
                 active
-                  ? 'tap flex items-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex items-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
+                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
+                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
               }
             >
               {option.label}
@@ -126,7 +128,14 @@ export default async function FollowUpsPage({
                           )}
                         </a>
                       ) : null}
-                      <CompleteFollowUpButton followUpId={followUp.id} />
+                      {followUp.lead ? (
+                        <FollowUpOutcomeActions
+                          followUpId={followUp.id}
+                          leadId={followUp.lead_id}
+                          customerName={followUp.lead.customer_name}
+                          lostReasons={lostReasons}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </li>

@@ -190,7 +190,7 @@ site-visits/{siteVisitId}/{fileId}-{safeFilename}
 
 ### 5.5 File Permissions
 
-- **Admin:** Upload, view, download, archive, and manage all files.
+- **Admin:** View, download, archive, and manage all files; upload operational attachments, but cannot upload landscape design versions.
 - **BDM:** View/download files belonging to assigned leads; upload relevant customer/site attachments; cannot delete approved history.
 - **Landscape Designer:** View related requirement information; upload design versions; view/download files for assigned design projects.
 - **Execution Team:** View/download the approved design for assigned execution projects; upload execution evidence.

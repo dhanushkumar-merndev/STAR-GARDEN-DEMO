@@ -94,10 +94,8 @@ export default async function AccountsPage({
         <StatTile label={activeTab.label} value={total} />
       </div>
 
-      {/* Horizontal scroll rather than wrapping: four tabs that reflow onto two
-          lines on a phone read as two unrelated groups. */}
-      <div className="mb-3 -mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
-        <nav className="flex w-max gap-1 rounded-lg bg-surface-muted p-1" aria-label="Account view">
+      <div className="mb-3 -mx-3 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0">
+        <nav className="flex w-max snap-x gap-1 rounded-lg bg-surface-muted p-1" aria-label="Account view">
           {TABS.map((item) => {
             const active = item.key === tab;
             return (
@@ -107,8 +105,8 @@ export default async function AccountsPage({
                 aria-current={active ? 'page' : undefined}
                 className={
                   active
-                    ? 'rounded-md bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-sm'
-                    : 'rounded-md px-3 py-2 text-sm font-medium text-ink-muted hover:text-ink'
+                    ? 'shrink-0 snap-start rounded-md bg-surface px-3 py-2 text-sm font-semibold whitespace-nowrap text-ink shadow-sm'
+                    : 'shrink-0 snap-start rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap text-ink-muted hover:text-ink'
                 }
               >
                 {item.label}

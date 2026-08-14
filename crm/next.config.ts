@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  // Next 16's draggable development indicator can try to release a pointer
+  // after Chrome device emulation has already cancelled it during navigation,
+  // producing a noisy NotFoundError in the browser console. The application
+  // has its own error UI, so the indicator is not needed here.
+  devIndicators: false,
+
   // The repository root also holds the marketing SPA and its own lockfile, so
   // Next.js has to be told which directory this app actually lives in.
   outputFileTracingRoot: __dirname,

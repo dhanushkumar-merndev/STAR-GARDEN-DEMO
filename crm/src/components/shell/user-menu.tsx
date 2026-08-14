@@ -41,7 +41,7 @@ export function UserMenu({ fullName, email, roleLabel, avatarUrl }: UserMenuProp
         <DropdownMenu.Content
           align="end"
           sideOffset={8}
-          className="z-50 w-60 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
+          className="z-50 w-60 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
         >
           <div className="flex items-start gap-3 border-b border-line px-3 py-3">
             <Avatar fullName={fullName} avatarUrl={avatarUrl} />

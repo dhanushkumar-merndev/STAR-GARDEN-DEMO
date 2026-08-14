@@ -137,8 +137,8 @@ export function VirtualizedTable({
           </Select>
         </label>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-muted">Page {currentPage} of {totalPages} · {rows.length} rows</span>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <span className="w-full text-xs text-ink-muted sm:w-auto">Page {currentPage} of {totalPages} · {rows.length} rows</span>
           <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => go(currentPage - 1)}>Previous</Button>
           <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => go(currentPage + 1)}>Next</Button>
         </div>

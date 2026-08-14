@@ -104,6 +104,7 @@
     background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
+    overflow-x: hidden;
     /* Room for the fixed mobile nav bar plus the iOS home indicator. */
     padding-bottom: env(safe-area-inset-bottom);
     -webkit-font-smoothing: antialiased;
@@ -115,6 +116,7 @@
   select,
   textarea {
     font-size: 16px;
+    max-width: 100%;
   }
 
   :focus-visible {
@@ -161,5 +163,48 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+}
+
+@keyframes mobile-menu-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes mobile-menu-slide-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes mobile-menu-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mobile-menu-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.mobile-menu-drawer[data-state='open'] {
+  animation: mobile-menu-slide-in 220ms ease-out;
+}
+
+.mobile-menu-drawer[data-state='closed'] {
+  animation: mobile-menu-slide-out 180ms ease-in;
+}
+
+.mobile-menu-overlay[data-state='open'] {
+  animation: mobile-menu-fade-in 180ms ease-out;
+}
+
+.mobile-menu-overlay[data-state='closed'] {
+  animation: mobile-menu-fade-out 160ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-menu-drawer,
+  .mobile-menu-overlay {
+    animation-duration: 0.01ms !important;
   }
 }

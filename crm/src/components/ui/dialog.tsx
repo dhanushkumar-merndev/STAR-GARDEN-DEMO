@@ -35,14 +35,14 @@ export function DialogContent({
         className={cn(
           'fixed z-50 flex flex-col bg-surface shadow-xl',
           // Phone: bottom sheet, capped so the header stays visible.
-          'inset-x-0 bottom-0 max-h-[92dvh] rounded-t-2xl',
+          'inset-x-0 bottom-0 max-h-[92dvh] w-full max-w-full overflow-x-hidden rounded-t-2xl',
           // Tablet and up: centred dialog.
           'sm:inset-x-auto sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-h-[85dvh] sm:w-full sm:max-w-lg',
           'sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
           className,
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-line px-3 py-3 sm:px-4">
           <div className="min-w-0">
             <DialogPrimitive.Title className="text-base font-semibold text-ink">
               {title}
@@ -64,7 +64,7 @@ export function DialogContent({
         </div>
 
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           {children}

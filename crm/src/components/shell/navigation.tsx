@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { LuMenu, LuX } from 'react-icons/lu';
 import { cn } from '@/lib/utils/cn';
 import {
   isActivePath,
@@ -76,7 +78,17 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 export function MobileNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
-  const items = primaryItemsFor(role);
+  const primaryItems = primaryItemsFor(role).slice(0, 4);
+  const primaryHrefs = new Set(primaryItems.map((item) => item.href));
+  const menuSections = sectionsFor(role)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !primaryHrefs.has(item.href)),
+    }))
+    .filter((section) => section.items.length > 0);
+  const menuActive = menuSections.some((section) =>
+    section.items.some((item) => isActivePath(pathname, item)),
+  );
 
   return (
     <nav
@@ -85,7 +97,7 @@ export function MobileNav({ role }: { role: UserRole }) {
       aria-label="Primary"
     >
       <div className="mx-auto flex max-w-lg">
-        {items.map((item) => {
+        {primaryItems.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item);
 
@@ -104,6 +116,73 @@ export function MobileNav({ role }: { role: UserRole }) {
             </Link>
           );
         })}
+
+        <DialogPrimitive.Root>
+          <DialogPrimitive.Trigger
+            className={cn(
+              'tap flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors',
+              menuActive ? 'text-brand-700' : 'text-ink-subtle',
+            )}
+            aria-label="Open navigation menu"
+          >
+            <LuMenu className={cn('size-5', menuActive && 'stroke-[2.25]')} />
+            <span>Menu</span>
+          </DialogPrimitive.Trigger>
+
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="mobile-menu-overlay fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+            <DialogPrimitive.Content
+              className="mobile-menu-drawer fixed inset-y-0 right-0 z-50 flex w-[min(21rem,88vw)] flex-col border-l border-line bg-surface shadow-2xl focus:outline-none"
+              aria-describedby={undefined}
+            >
+              <div className="flex h-14 items-center justify-between border-b border-line px-4">
+                <DialogPrimitive.Title className="text-base font-semibold text-ink">
+                  Menu
+                </DialogPrimitive.Title>
+                <DialogPrimitive.Close className="tap flex items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink" aria-label="Close menu">
+                  <LuX className="size-5" />
+                </DialogPrimitive.Close>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+                <div className="space-y-5">
+                  {menuSections.map((section, index) => (
+                    <section key={section.title ?? `menu-group-${index}`}>
+                      {section.title ? (
+                        <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-ink-subtle uppercase">
+                          {section.title}
+                        </p>
+                      ) : null}
+                      <div className="space-y-1">
+                        {section.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = isActivePath(pathname, item);
+                          return (
+                            <DialogPrimitive.Close asChild key={item.href}>
+                              <Link
+                                href={item.href}
+                                aria-current={active ? 'page' : undefined}
+                                className={cn(
+                                  'tap flex items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors',
+                                  active
+                                    ? 'bg-brand-50 text-brand-800'
+                                    : 'text-ink-muted hover:bg-surface-muted hover:text-ink',
+                                )}
+                              >
+                                <Icon className={cn('size-5 shrink-0', active && 'stroke-[2.25]')} />
+                                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                              </Link>
+                            </DialogPrimitive.Close>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       </div>
     </nav>
   );

@@ -19,10 +19,10 @@ import { LuCalendarDays, LuRotateCcw } from 'react-icons/lu';
 /**
  * A fixed width, not the browser's intrinsic one. `dd-mm-yyyy` plus a picker
  * icon measures differently in each field, which left the two boxes visibly
- * mismatched. h-11 keeps them on the 44px touch target §16 asks for.
+ * mismatched. The compact toolbar uses a consistent 40px control height.
  */
 const FIELD_CLASSES =
-  'h-11 w-[10.5rem] rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
+  'h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none sm:w-[9.5rem]';
 
 export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
   const [start, setStart] = React.useState(from ?? '');
@@ -46,7 +46,7 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
   return (
     <form
       method="GET"
-      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4 rounded-xl border border-line bg-surface px-4 py-3.5"
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-3"
     >
       {/* Title block and control group are separate flex children, both
           centred against the row. Aligning them as siblings of the inputs
@@ -65,8 +65,8 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2.5">
-        <label className="flex flex-col gap-1">
+      <div className="grid w-full grid-cols-1 gap-2.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+        <label className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 sm:flex">
           <span className="text-xs font-medium text-ink-muted">From</span>
           <input
             type="date"
@@ -78,7 +78,7 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
           />
         </label>
 
-        <label className="flex flex-col gap-1">
+        <label className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 sm:flex">
           <span className="text-xs font-medium text-ink-muted">To</span>
           <input
             type="date"
@@ -93,7 +93,7 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
 
         <button
           type="submit"
-          className="h-11 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+          className="h-10 w-full rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 sm:w-auto"
         >
           Apply
         </button>
@@ -101,7 +101,7 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
         {active ? (
           <Link
             href="/dashboard"
-            className="inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
           >
             <LuRotateCcw className="size-3.5" />
             Reset
