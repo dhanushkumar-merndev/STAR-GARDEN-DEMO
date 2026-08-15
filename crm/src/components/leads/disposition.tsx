@@ -102,7 +102,11 @@ export function DispositionButtons({
           toast.error(result.message);
           return;
         }
-        toast.success(`${choiceLabel(choice)} saved.`);
+        toast.success(
+          ['NO_ANSWER', 'BUSY', 'SWITCHED_OFF'].includes(choice)
+            ? `${choiceLabel(choice)} saved. Callback reminder set for 30 minutes.`
+            : `${choiceLabel(choice)} saved.`,
+        );
       }
 
       setOptimisticOutcome(choice);

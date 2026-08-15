@@ -254,6 +254,8 @@ export type FollowUpRow = {
   title: string;
   notes: string | null;
   due_at: string;
+  /** Created automatically from a retryable call outcome. */
+  is_automatic: boolean;
   status: FollowUpStatus;
   completed_at: string | null;
   completed_by: string | null;
@@ -1002,6 +1004,10 @@ export type Database = {
         Returns: Json;
       };
       admin_dashboard_operational_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_call_outcome_kpis: {
         Args: { p_from: string; p_to: string };
         Returns: Json;
       };

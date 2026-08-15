@@ -7,6 +7,7 @@ import { assertCanWriteLead } from '@/lib/permissions/guards';
 import { leadStatusForCallOutcome, assertLeadTransition } from '@/lib/state-machines';
 import type { SessionUser } from '@/lib/auth/session';
 import { getBusinessSettings } from '@/lib/settings';
+import { automaticRetryDueAt, isAutomaticRetryOutcome } from '@/lib/call-reminders';
 import type { ActivityRow, CallOutcome, LeadStatus } from '@/types/database';
 import { changeLeadStatus, humanizePostgresError } from './leads';
 
@@ -130,15 +131,23 @@ export async function logCallOutcome(
 
   let followUpId: string | null = null;
 
-  if (input.follow_up_at) {
+  const automaticRetry = !input.follow_up_at && isAutomaticRetryOutcome(input.outcome);
+  const followUpAt = input.follow_up_at ??
+    (automaticRetry ? automaticRetryDueAt() : undefined);
+
+  if (followUpAt) {
     const { data: followUp, error: followUpError } = await supabase
       .from('follow_ups')
       .insert({
         lead_id: input.lead_id,
         assigned_to: lead.assigned_bdm_id ?? user.id,
-        title: input.next_action?.trim() || `Follow up after ${humanizeOutcome(input.outcome)}`,
+        title: input.next_action?.trim() ||
+          (automaticRetry
+            ? `Call ${lead.customer_name} again — ${humanizeOutcome(input.outcome)}`
+            : `Follow up after ${humanizeOutcome(input.outcome)}`),
         notes: input.notes ?? null,
-        due_at: input.follow_up_at,
+        due_at: followUpAt,
+        is_automatic: automaticRetry,
         created_by: user.id,
       })
       .select('id')
@@ -155,7 +164,7 @@ export async function logCallOutcome(
     await supabase.from('activities').insert({
       lead_id: input.lead_id,
       type: 'FOLLOW_UP_CREATED',
-      notes: `Follow-up due ${new Date(input.follow_up_at).toLocaleString('en-IN')}.`,
+      notes: `${automaticRetry ? 'Automatic 30-minute callback' : 'Follow-up'} due ${new Date(followUpAt).toLocaleString('en-IN')}.`,
       created_by: user.id,
     });
   }
@@ -231,7 +240,8 @@ export async function logCallOutcome(
     after: {
       outcome: input.outcome,
       next_action: input.next_action ?? null,
-      follow_up_at: input.follow_up_at ?? null,
+      follow_up_at: followUpAt ?? null,
+      automatic_follow_up: automaticRetry,
       status: newStatus ?? lead.status,
     },
   });

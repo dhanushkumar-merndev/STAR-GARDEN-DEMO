@@ -8,7 +8,7 @@ import { getSettings } from '@/lib/settings';
  * Scheduled reminders (AGENTS.md §13).
  *
  * "Use a simple scheduled job/cron for due-date reminders. Do not add a complex
- * queue system until required by actual scale." This runs hourly from Vercel
+ * queue system until required by actual scale." This runs every minute from Supabase
  * Cron and does four passes.
  *
  * Idempotency comes from the database, not from bookkeeping here: the partial
@@ -54,6 +54,9 @@ export async function runReminders(): Promise<ReminderRun> {
     .from('follow_ups')
     .select('id, title, assigned_to, lead_id, due_at, leads!follow_ups_lead_id_fkey(lead_code)')
     .in('status', ['OPEN'])
+    // Automatic callbacks alert at their due time, not immediately through the
+    // normal configurable "due soon" window.
+    .eq('is_automatic', false)
     .gte('due_at', now.toISOString())
     .lte('due_at', dueSoonCutoff)
     .limit(500);

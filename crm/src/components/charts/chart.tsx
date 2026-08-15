@@ -79,23 +79,19 @@ export function Chart({ option, summary, table, className = 'h-64' }: ChartProps
     <figure className="m-0">
       <div ref={elementRef} className={`w-full ${className}`} role="img" aria-label={summary} />
       {table && table.length > 0 ? (
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs text-ink-subtle hover:text-ink-muted">
-            View as table
-          </summary>
-          <table className="mt-2 w-full text-left text-xs">
+        <div className="sr-only">
+          <table>
+            <caption>{summary}</caption>
             <tbody>
               {table.map((row) => (
-                <tr key={row.label} className="border-t border-line">
-                  <th scope="row" className="py-1 pr-3 font-medium text-ink-muted">
-                    {row.label}
-                  </th>
-                  <td className="py-1 text-right tabular-nums text-ink">{row.value}</td>
+                <tr key={row.label}>
+                  <th scope="row">{row.label}</th>
+                  <td>{row.value}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </details>
+        </div>
       ) : null}
     </figure>
   );

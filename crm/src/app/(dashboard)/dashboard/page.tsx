@@ -101,7 +101,7 @@ function greeting(): string {
 async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRange; firstName: string }) {
   const user = await requirePageUser();
   const data = await getAdminDashboard(user, dateRange);
-  const analyticsDescription = dateRange.from || dateRange.to ? 'Selected date range' : 'Last 90 days';
+  const analyticsDescription = formatAnalyticsRange(data.analyticsRange);
 
   const attention =
     data.unassigned + data.noNextAction + data.followUps.overdue + data.visitsOverdue;
@@ -301,6 +301,14 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
       </Section>
     </div>
   );
+}
+
+function formatAnalyticsRange(range: { from: string; to: string }): string {
+  const format = (value: string) =>
+    new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  // `to` is an exclusive boundary, so show the final included calendar day.
+  const inclusiveTo = new Date(new Date(range.to).getTime() - 1);
+  return `${format(range.from)} – ${format(inclusiveTo.toISOString())}`;
 }
 
 /** A titled band of the dashboard, so the page reads as groups not a wall. */

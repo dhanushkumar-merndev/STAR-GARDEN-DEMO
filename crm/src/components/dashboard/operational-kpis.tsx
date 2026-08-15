@@ -8,6 +8,7 @@ import {
   LuCalendarCheck,
   LuClipboardCheck,
   LuHardHat,
+  LuInfo,
   LuPencilRuler,
   LuPhoneCall,
   LuUsers,
@@ -42,6 +43,7 @@ interface KpiSectionData {
   cards: KpiCardData[];
   breakdown: DashboardBreakdownItem[];
   details?: React.ReactNode;
+  hideCardsInDialog?: boolean;
   viewHref: string;
 }
 
@@ -53,6 +55,7 @@ export function OperationalKpis({
   rangeLabel: string;
 }) {
   const [active, setActive] = React.useState<KpiSectionData | null>(null);
+  const [leadInfoOpen, setLeadInfoOpen] = React.useState(false);
 
   const sections: KpiSectionData[] = [
     {
@@ -63,11 +66,23 @@ export function OperationalKpis({
       icon: <LuUsers className="size-4" />,
       cards: [
         { label: 'Today leads', value: data.leads.today, tone: 'brand' },
-        { label: 'All leads', value: data.leads.all },
+        { label: 'Leads in range', value: data.leads.all },
         { label: 'Not interested', value: data.leads.not_interested, tone: data.leads.not_interested ? 'warn' : 'neutral', hint: 'Includes unsuccessful outcomes' },
         { label: 'Invalid', value: data.leads.invalid, tone: data.leads.invalid ? 'danger' : 'neutral' },
       ],
-      breakdown: data.leads.breakdown,
+      // This popup is for lead intake and call results. Lead workflow stages
+      // such as SITE_VISIT_COMPLETED belong to the dedicated Site visits KPI.
+      breakdown: data.leads.call_outcomes,
+      details: (
+        <BreakdownList
+          items={[
+            { label: 'Today leads', count: data.leads.today },
+            { label: 'Leads in range', count: data.leads.all },
+            ...data.leads.call_outcomes,
+          ]}
+        />
+      ),
+      hideCardsInDialog: true,
       viewHref: '/leads',
     },
     {
@@ -157,6 +172,34 @@ export function OperationalKpis({
               <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
                 <span className="text-brand-700">{section.icon}</span>
                 {section.title}
+                {section.id === 'leads' ? (
+                  <span
+                    className="relative inline-flex"
+                    onMouseEnter={() => setLeadInfoOpen(true)}
+                    onMouseLeave={() => setLeadInfoOpen(false)}
+                  >
+                    <button
+                      type="button"
+                      aria-label="What the Leads KPI includes"
+                      aria-expanded={leadInfoOpen}
+                      onClick={() => setLeadInfoOpen((open) => !open)}
+                      onFocus={() => setLeadInfoOpen(true)}
+                      onBlur={() => setLeadInfoOpen(false)}
+                      className="inline-flex size-6 items-center justify-center rounded-full text-ink-muted hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      <LuInfo className="size-4" />
+                    </button>
+                    {leadInfoOpen ? (
+                      <span
+                        role="tooltip"
+                        className="absolute left-0 top-7 z-30 w-64 rounded-lg bg-ink px-3 py-2 text-xs font-normal leading-relaxed text-white shadow-lg"
+                      >
+                        Counts unique leads by their latest outcome: Interested, Not interested,
+                        Connected, No answer, Busy, Switched off, or Invalid number.
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
               </h2>
               <p className="mt-0.5 text-xs text-ink-muted">{section.description}</p>
             </div>
@@ -170,7 +213,11 @@ export function OperationalKpis({
           </div>
 
           <div className="mt-3 rounded-xl border border-line bg-surface p-3 sm:p-4">
-            <PhaseLineChart trend={data.trends} metric={section.metric} label={section.title} />
+            {section.id === 'leads' ? (
+              <CallOutcomeLineChart trend={data.leads.call_outcome_trends} />
+            ) : (
+              <PhaseLineChart trend={data.trends} metric={section.metric} label={section.title} />
+            )}
           </div>
         </section>
       ))}
@@ -179,14 +226,16 @@ export function OperationalKpis({
         {active ? (
           <DialogContent title={`${active.title} details`} description={`Counts for ${rangeLabel}.`} className="sm:max-w-3xl">
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {active.cards.map((card) => (
-                  <div key={card.label} className="rounded-lg border border-line bg-canvas p-3">
-                    <p className="text-xs text-ink-muted">{card.label}</p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{card.value}</p>
-                  </div>
-                ))}
-              </div>
+              {!active.hideCardsInDialog ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {active.cards.map((card) => (
+                    <div key={card.label} className="rounded-lg border border-line bg-canvas p-3">
+                      <p className="text-xs text-ink-muted">{card.label}</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{card.value}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {active.details ?? <BreakdownList items={active.breakdown} />}
               <Link href={active.viewHref} className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700">
                 View full {active.title.toLowerCase()} page
@@ -251,6 +300,57 @@ function SalesMemberTable({ members }: { members: AdminOperationalKpis['sales'][
         </tbody>
       </table>
     </div>
+  );
+}
+
+const CALL_OUTCOME_COLORS: Record<string, string> = {
+  INTERESTED: '#00875a',
+  NOT_INTERESTED: '#dc2626',
+  CONNECTED: '#2563eb',
+  NO_ANSWER: '#f59e0b',
+  BUSY: '#7c3aed',
+  SWITCHED_OFF: '#64748b',
+  INVALID_NUMBER: '#be123c',
+};
+
+function CallOutcomeLineChart({
+  trend,
+}: {
+  trend: AdminOperationalKpis['leads']['call_outcome_trends'];
+}) {
+  const labels = Object.keys(CALL_OUTCOME_COLORS);
+  const rows = trend.map((row) => ({
+    day: row.day,
+    values: Object.fromEntries(row.outcomes.map((outcome) => [outcome.label, outcome.count])),
+  }));
+  const option = React.useMemo<EChartsOption>(() => ({
+    grid: { top: 36, right: 12, bottom: 24, left: 8, containLabel: true },
+    legend: {
+      type: 'scroll',
+      top: 0,
+      textStyle: AXIS_LABEL,
+      data: labels.map(humanizeEnum),
+    },
+    tooltip: { trigger: 'axis', appendToBody: true, ...TOOLTIP_BASE },
+    xAxis: { type: 'category', data: rows.map((row) => row.day), boundaryGap: false, axisTick: { show: false }, axisLabel: { ...AXIS_LABEL, hideOverlap: true }, axisLine: { lineStyle: { color: CHART_INK.line } } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: AXIS_LABEL, splitLine: { lineStyle: { color: CHART_INK.line, type: 'dashed' } } },
+    series: labels.map((label) => ({
+      name: humanizeEnum(label),
+      type: 'line',
+      data: rows.map((row) => Number(row.values[label]) || 0),
+      smooth: 0.2,
+      showSymbol: false,
+      lineStyle: { color: CALL_OUTCOME_COLORS[label], width: 2 },
+      itemStyle: { color: CALL_OUTCOME_COLORS[label] },
+    })),
+  }), [labels, rows]);
+
+  return (
+    <Chart
+      option={option}
+      className="h-56 sm:h-64"
+      summary="Daily Interested, Not interested, Connected, No answer, Busy, Switched off, and Invalid number call outcomes."
+    />
   );
 }
 

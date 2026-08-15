@@ -87,7 +87,15 @@ export interface DashboardBreakdownItem {
 }
 
 export interface AdminOperationalKpis {
-  leads: { today: number; all: number; not_interested: number; invalid: number; breakdown: DashboardBreakdownItem[] };
+  leads: {
+    today: number;
+    all: number;
+    not_interested: number;
+    invalid: number;
+    breakdown: DashboardBreakdownItem[];
+    call_outcomes: DashboardBreakdownItem[];
+    call_outcome_trends: Array<{ day: string; outcomes: DashboardBreakdownItem[] }>;
+  };
   sales: {
     contacted: number;
     uncontacted: number;
@@ -128,12 +136,20 @@ export async function getAdminDashboard(
   const supabase = await createClient();
   const analyticsRange = resolveAnalyticsRange(dateRange);
 
-  const [{ data, error }, { data: operationalData, error: operationalError }] = await Promise.all([
+  const [
+    { data, error },
+    { data: operationalData, error: operationalError },
+    { data: callOutcomeData, error: callOutcomeError },
+  ] = await Promise.all([
     supabase.rpc('admin_dashboard_snapshot', {
       p_from: analyticsRange.from,
       p_to: analyticsRange.to,
     }),
     supabase.rpc('admin_dashboard_operational_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_call_outcome_kpis', {
       p_from: analyticsRange.from,
       p_to: analyticsRange.to,
     }),
@@ -146,6 +162,24 @@ export async function getAdminDashboard(
   if (operationalError || !operationalData || Array.isArray(operationalData) || typeof operationalData !== 'object') {
     throw new AppError('INTERNAL', 'Could not load operational dashboard KPIs.', { cause: operationalError });
   }
+
+  if (callOutcomeError || !callOutcomeData || Array.isArray(callOutcomeData) || typeof callOutcomeData !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load call outcome KPIs.', { cause: callOutcomeError });
+  }
+
+  const operational = operationalData as unknown as AdminOperationalKpis;
+  const callOutcomes = callOutcomeData as unknown as {
+    counts?: DashboardBreakdownItem[];
+    trends?: Array<{ day: string; outcomes: DashboardBreakdownItem[] }>;
+  };
+  operational.leads.call_outcomes = callOutcomes.counts ?? [];
+  operational.leads.call_outcome_trends = callOutcomes.trends ?? [];
+  // These headline cards use the same mutually-exclusive latest outcome as
+  // the modal, rather than historical attempts that can count one lead twice.
+  operational.leads.not_interested =
+    operational.leads.call_outcomes.find((item) => item.label === 'NOT_INTERESTED')?.count ?? 0;
+  operational.leads.invalid =
+    operational.leads.call_outcomes.find((item) => item.label === 'INVALID_NUMBER')?.count ?? 0;
 
   const snapshot = data as unknown as {
     leads_today: number;
@@ -184,7 +218,7 @@ export async function getAdminDashboard(
     visitsToday: snapshot.visits_today ?? 0,
     visitsOverdue: snapshot.visits_overdue ?? 0,
     recentActivity: snapshot.recent_activity ?? [],
-    operational: operationalData as unknown as AdminOperationalKpis,
+    operational,
   };
 }
 
