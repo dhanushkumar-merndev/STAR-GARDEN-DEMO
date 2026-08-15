@@ -209,7 +209,15 @@ export function ChangeStatusDialog({
 /* Follow-up                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export function CreateFollowUpDialog({ leadId, assignees }: { leadId: string; assignees: Person[] }) {
+export function CreateFollowUpDialog({
+  leadId,
+  assignees,
+  canAssign,
+}: {
+  leadId: string;
+  assignees: Person[];
+  canAssign: boolean;
+}) {
   const { open, setOpen, result, run } = useDialogForm();
 
   return (
@@ -240,7 +248,7 @@ export function CreateFollowUpDialog({ leadId, assignees }: { leadId: string; as
               <Textarea id="notes" name="notes" rows={2} />
             </Field>
 
-            {assignees.length > 0 ? (
+            {canAssign && assignees.length > 0 ? (
               <Field label="Assign to" htmlFor="assigned_to" hint="Defaults to the lead owner.">
                 <Select id="assigned_to" name="assigned_to" defaultValue="">
                   <option value="">Lead owner</option>

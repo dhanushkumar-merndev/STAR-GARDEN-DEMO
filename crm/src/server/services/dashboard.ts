@@ -109,13 +109,66 @@ export interface AdminOperationalKpis {
       uncontacted: number;
       interested: number;
       not_interested: number;
+      connected: number;
+      no_answer: number;
+      busy: number;
+      switched_off: number;
       invalid: number;
     }>;
   };
-  site_visits: { total: number; today: number; completed: number; due: number; breakdown: DashboardBreakdownItem[] };
-  designs: { in_process: number; completed: number; overdue: number; approval_pending: number; breakdown: DashboardBreakdownItem[] };
-  follow_ups: { pending: number; today: number; completed: number; overdue: number; breakdown: DashboardBreakdownItem[] };
-  execution: { in_progress: number; completed: number; blocked: number; overdue: number; breakdown: DashboardBreakdownItem[] };
+  site_visits: {
+    total: number;
+    today: number;
+    upcoming: number;
+    overdue: number;
+    completed: number;
+    scheduled: number;
+    due: number;
+    breakdown: DashboardBreakdownItem[];
+    today_active: Array<{
+      id: string;
+      lead_id: string;
+      customer_name: string;
+      scheduled_start_at: string;
+      status: string;
+      address: string | null;
+    }>;
+  };
+  designs: {
+    in_process: number;
+    completed: number;
+    overdue: number;
+    approval_pending: number;
+    breakdown: DashboardBreakdownItem[];
+    members: Array<{ id: string; name: string; total: number; pending: number; completed: number }>;
+  };
+  follow_ups: {
+    pending: number;
+    today: number;
+    completed: number;
+    overdue: number;
+    breakdown: DashboardBreakdownItem[];
+    members: Array<{ id: string; name: string; total: number; overdue: number; pending: number; completed: number }>;
+  };
+  execution: {
+    assigned: number;
+    in_progress: number;
+    completed: number;
+    blocked: number;
+    overdue: number;
+    breakdown: DashboardBreakdownItem[];
+    projects: Array<{
+      id: string;
+      lead_id: string;
+      title: string;
+      customer_name: string;
+      status: string;
+      progress_percent: number;
+      due_at: string | null;
+      blocker_summary: string | null;
+      assignees: string;
+    }>;
+  };
   trends: Array<{
     day: string;
     leads: number;
@@ -140,6 +193,11 @@ export async function getAdminDashboard(
     { data, error },
     { data: operationalData, error: operationalError },
     { data: callOutcomeData, error: callOutcomeError },
+    { data: salesMemberData, error: salesMemberError },
+    { data: followUpMemberData, error: followUpMemberError },
+    { data: siteVisitData, error: siteVisitError },
+    { data: designerData, error: designerError },
+    { data: executionDetailData, error: executionDetailError },
   ] = await Promise.all([
     supabase.rpc('admin_dashboard_snapshot', {
       p_from: analyticsRange.from,
@@ -150,6 +208,26 @@ export async function getAdminDashboard(
       p_to: analyticsRange.to,
     }),
     supabase.rpc('admin_dashboard_call_outcome_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_sales_member_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_followup_member_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_site_visit_details', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_designer_kpis', {
+      p_from: analyticsRange.from,
+      p_to: analyticsRange.to,
+    }),
+    supabase.rpc('admin_dashboard_execution_details', {
       p_from: analyticsRange.from,
       p_to: analyticsRange.to,
     }),
@@ -167,6 +245,22 @@ export async function getAdminDashboard(
     throw new AppError('INTERNAL', 'Could not load call outcome KPIs.', { cause: callOutcomeError });
   }
 
+  if (salesMemberError || !Array.isArray(salesMemberData)) {
+    throw new AppError('INTERNAL', 'Could not load sales member KPIs.', { cause: salesMemberError });
+  }
+  if (followUpMemberError || !Array.isArray(followUpMemberData)) {
+    throw new AppError('INTERNAL', 'Could not load follow-up member KPIs.', { cause: followUpMemberError });
+  }
+  if (siteVisitError || !siteVisitData || Array.isArray(siteVisitData) || typeof siteVisitData !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load Site visit KPIs.', { cause: siteVisitError });
+  }
+  if (designerError || !Array.isArray(designerData)) {
+    throw new AppError('INTERNAL', 'Could not load designer KPIs.', { cause: designerError });
+  }
+  if (executionDetailError || !executionDetailData || Array.isArray(executionDetailData) || typeof executionDetailData !== 'object') {
+    throw new AppError('INTERNAL', 'Could not load execution details.', { cause: executionDetailError });
+  }
+
   const operational = operationalData as unknown as AdminOperationalKpis;
   const callOutcomes = callOutcomeData as unknown as {
     counts?: DashboardBreakdownItem[];
@@ -174,6 +268,17 @@ export async function getAdminDashboard(
   };
   operational.leads.call_outcomes = callOutcomes.counts ?? [];
   operational.leads.call_outcome_trends = callOutcomes.trends ?? [];
+  operational.sales.members = salesMemberData as unknown as AdminOperationalKpis['sales']['members'];
+  operational.follow_ups.members = followUpMemberData as unknown as AdminOperationalKpis['follow_ups']['members'];
+  operational.site_visits = {
+    ...operational.site_visits,
+    ...(siteVisitData as unknown as Partial<AdminOperationalKpis['site_visits']>),
+  };
+  operational.designs.members = designerData as unknown as AdminOperationalKpis['designs']['members'];
+  operational.execution = {
+    ...operational.execution,
+    ...(executionDetailData as unknown as Partial<AdminOperationalKpis['execution']>),
+  };
   // These headline cards use the same mutually-exclusive latest outcome as
   // the modal, rather than historical attempts that can count one lead twice.
   operational.leads.not_interested =

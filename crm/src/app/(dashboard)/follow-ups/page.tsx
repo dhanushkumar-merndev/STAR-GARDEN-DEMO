@@ -5,15 +5,13 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listFollowUps, type FollowUpScope } from '@/server/services/follow-ups';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, FollowUpStatusBadge } from '@/components/status';
-import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
 import { WeeklyFollowUpCalendar } from '@/components/follow-ups/weekly-calendar';
-import { getConfigOptions } from '@/lib/settings';
-import { formatDue, formatDateTime } from '@/lib/utils/format';
-import { formatMobile, telHref } from '@/lib/utils/phone';
+import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Follow-ups' };
 
 const SCOPES: { value: FollowUpScope; label: string }[] = [
+  { value: 'PENDING', label: 'Pending' },
   { value: 'OVERDUE', label: 'Overdue' },
   { value: 'TODAY', label: 'Today' },
   { value: 'UPCOMING', label: 'Upcoming' },
@@ -31,10 +29,9 @@ export default async function FollowUpsPage({
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'OVERDUE') as FollowUpScope;
 
-  const [items, calendarItems, lostReasons] = await Promise.all([
+  const [items, calendarItems] = await Promise.all([
     listFollowUps(user, { scope, limit: 100 }),
     listFollowUps(user, { scope: 'ALL', limit: 100 }),
-    getConfigOptions('lost_reason'),
   ]);
 
   return (
@@ -80,7 +77,6 @@ export default async function FollowUpsPage({
         ) : (
           <ul className="divide-y divide-line">
             {items.map((followUp) => {
-              const due = formatDue(followUp.due_at);
               const open = followUp.status === 'OPEN' || followUp.status === 'OVERDUE';
 
               return (
@@ -101,7 +97,7 @@ export default async function FollowUpsPage({
 
                     <div className="flex flex-col items-end gap-1.5">
                       {open ? (
-                        <DueBadge label={due.label} tone={due.tone} />
+                        <DueBadge value={followUp.due_at} />
                       ) : (
                         <FollowUpStatusBadge value={followUp.status} />
                       )}
@@ -114,27 +110,12 @@ export default async function FollowUpsPage({
                   {open ? (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {followUp.lead ? (
-                        <a
-                          href={telHref(
-                            followUp.lead.mobile_country_code,
-                            followUp.lead.mobile_normalized,
-                          )}
+                        <Link
+                          href={`/leads/${followUp.lead_id}`}
                           className="tap inline-flex items-center rounded-lg border border-line px-3 text-sm font-medium text-brand-700"
                         >
-                          Call{' '}
-                          {formatMobile(
-                            followUp.lead.mobile_country_code,
-                            followUp.lead.mobile_normalized,
-                          )}
-                        </a>
-                      ) : null}
-                      {followUp.lead ? (
-                        <FollowUpOutcomeActions
-                          followUpId={followUp.id}
-                          leadId={followUp.lead_id}
-                          customerName={followUp.lead.customer_name}
-                          lostReasons={lostReasons}
-                        />
+                          Open lead to call customer
+                        </Link>
                       ) : null}
                     </div>
                   ) : null}

@@ -135,15 +135,15 @@ export async function changeLeadStatusAction(
  */
 export async function recordCallAttemptAction(
   formData: FormData,
-): Promise<ActionResult<{ activityId: string }>> {
+): Promise<ActionResult<{ activityId: string; dialHref: string }>> {
   return actionResult(async () => {
     const user = await requireUser();
     const input = parseOrThrow(recordCallAttemptSchema, formDataToObject(formData));
 
-    const activity = await recordCallAttemptService(user, input.lead_id);
+    const { activity, dialHref } = await recordCallAttemptService(user, input.lead_id);
     revalidatePath(`/leads/${input.lead_id}`);
 
-    return { activityId: activity.id };
+    return { activityId: activity.id, dialHref };
   });
 }
 

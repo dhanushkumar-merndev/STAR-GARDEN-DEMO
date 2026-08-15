@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   LuArrowLeft,
+  LuChevronDown,
   LuClipboardList,
   LuInfo,
   LuMail,
@@ -41,8 +42,8 @@ import {
   StartExecutionDialog,
 } from '@/components/leads/lead-dialogs';
 import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
-import { formatDateTime, formatDue, humanizeEnum } from '@/lib/utils/format';
-import { formatMobile, telHref } from '@/lib/utils/phone';
+import { formatDateTime, humanizeEnum } from '@/lib/utils/format';
+import { formatMobile, maskMobile, telHref } from '@/lib/utils/phone';
 import type { CallOutcome } from '@/types/database';
 import { MobileSheet } from '@/components/ui/mobile-sheet';
 
@@ -63,8 +64,8 @@ const LEAD_DETAIL_TABS: { id: LeadDetailTab; label: string }[] = [
   { id: 'visits', label: 'Site visits' },
   { id: 'design', label: 'Landscape design' },
   { id: 'execution', label: 'Execution' },
-  { id: 'timeline', label: 'Timeline' },
   { id: 'customer-access', label: 'Customer access' },
+  { id: 'timeline', label: 'Timeline' },
 ];
 
 function isLeadDetailTab(value: string | undefined): value is LeadDetailTab {
@@ -87,7 +88,7 @@ export default async function LeadDetailPage({
 }) {
   const { leadId } = await params;
   const { tab } = await searchParams;
-  const activeTab = isLeadDetailTab(tab) ? tab : 'details';
+  const requestedTab = isLeadDetailTab(tab) ? tab : 'details';
   const user = await requirePageUser();
 
   let detail;
@@ -124,33 +125,52 @@ export default async function LeadDetailPage({
     user.isAdmin ? listPortalAccess(user, leadId).catch(() => []) : Promise.resolve([]),
   ]);
 
-  const mobile = formatMobile(lead.mobile_country_code, lead.mobile_normalized);
-
-  // Null when no business WhatsApp number is configured, which hides every
-  // WhatsApp button rather than rendering one that opens an error.
-  const whatsappUrl = whatsappChatUrl({
-    countryCode: lead.mobile_country_code,
-    nationalNumber: lead.mobile_normalized,
-    message: renderWhatsappMessage(business.whatsappTemplate, {
-      customerName: lead.customer_name,
-      businessName: business.name,
-      leadCode: lead.lead_code,
-    }),
-  });
+  const maskedMobile = maskMobile(lead.mobile_country_code, lead.mobile_normalized);
 
   // Keep the recorded call decision visible even on a lost/closed lead. It is
   // read-only there, rather than disappearing and making it look as though no
   // outcome was recorded.
   const showDisposition = writable;
-  const due = formatDue(lead.next_action_at);
   const openFollowUps = followUps.filter((f) => f.status === 'OPEN' || f.status === 'OVERDUE');
   const latestCallOutcome = activities.find(
     (activity) => activity.type === 'CALL_OUTCOME' && activity.outcome,
   )?.outcome as CallOutcome | undefined;
+  const latestOwnAttempt = activities.find(
+    (activity) => activity.type === 'CALL_ATTEMPT' && activity.created_by === user.id,
+  );
+  // Number masking is a one-time gate for the lead. Once any authorized staff
+  // member has opened the dialler, the contact tools remain available; unlike
+  // outcome entry, they do not lock again after the attempt is consumed.
+  const hasCallHistory = Boolean(lead.first_call_attempt_at);
+  const latestOutcomeActivity = activities.find((activity) => activity.type === 'CALL_OUTCOME');
+  const hasPendingCallAttempt = Boolean(
+    latestOwnAttempt &&
+      (!latestOutcomeActivity ||
+        new Date(latestOwnAttempt.activity_at) > new Date(latestOutcomeActivity.activity_at)),
+  );
+  const displayMobile = hasCallHistory
+    ? formatMobile(lead.mobile_country_code, lead.mobile_normalized)
+    : maskedMobile;
+  const revealedTelHref = hasCallHistory
+    ? telHref(lead.mobile_country_code, lead.mobile_normalized)
+    : undefined;
+  const whatsappUrl = hasCallHistory
+    ? whatsappChatUrl({
+        countryCode: lead.mobile_country_code,
+        nationalNumber: lead.mobile_normalized,
+        message: renderWhatsappMessage(business.whatsappTemplate, {
+          customerName: lead.customer_name,
+          businessName: business.name,
+          leadCode: lead.lead_code,
+        }),
+      })
+    : null;
   // The *current* call decision controls whether a new phase can begin. A
   // much older Interested outcome must not keep the delivery tabs open after
   // a later No answer / Switched off result.
   const hasInterest = latestCallOutcome === 'INTERESTED';
+  // A copied URL must not bypass the same gate shown in the tab navigation.
+  const activeTab = requestedTab === 'customer-access' && !hasInterest ? 'details' : requestedTab;
   const hasCompletedVisit = siteVisits.some((visit) => visit.status === 'COMPLETED');
   const completedVisitWithDesigner = siteVisits.find(
     (visit) => visit.status === 'COMPLETED' && visit.assigned_designer_id,
@@ -203,7 +223,7 @@ export default async function LeadDetailPage({
               <MobileSheet label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
                 <dl className="space-y-3 text-sm">
                   <CustomerDetail label="Customer" value={lead.customer_name} />
-                  <CustomerDetail label="Mobile" value={mobile} href={telHref(lead.mobile_country_code, lead.mobile_normalized)} />
+                  <CustomerDetail label="Mobile" value={displayMobile} href={revealedTelHref} />
                   {lead.email ? <CustomerDetail label="Email" value={lead.email} href={`mailto:${lead.email}`} /> : null}
                   <CustomerDetail label="Owner" value={owner?.full_name ?? 'Unassigned'} />
                   <CustomerDetail label="Location" value={lead.site_address ?? lead.location_text ?? 'Not provided'} />
@@ -223,7 +243,7 @@ export default async function LeadDetailPage({
               <dt className="shrink-0 text-ink-muted">Next action</dt>
               <dd>
                 {lead.next_action_at ? (
-                  <DueBadge label={due.label} tone={due.tone} />
+                  <DueBadge value={lead.next_action_at} />
                 ) : (
                   <Badge tone="warn">Nothing scheduled</Badge>
                 )}
@@ -261,7 +281,7 @@ export default async function LeadDetailPage({
 
           {writable ? (
             <div className="flex flex-wrap gap-2 pt-1">
-              <CallCustomerButton leadId={lead.id} telHref={telHref(lead.mobile_country_code, lead.mobile_normalized)} displayNumber={mobile} />
+              <CallCustomerButton leadId={lead.id} />
               {whatsappUrl ? (
                 <a
                   href={whatsappUrl}
@@ -288,12 +308,15 @@ export default async function LeadDetailPage({
           const locked =
             (tab.id === 'visits' && !canStartSiteVisit && !reachedVisits) ||
             (tab.id === 'design' && !canStartDesign && !reachedDesign) ||
-            (tab.id === 'execution' && !canStartExecution && !reachedExecution);
+            (tab.id === 'execution' && !canStartExecution && !reachedExecution) ||
+            (tab.id === 'customer-access' && !hasInterest);
           const needsAttention =
             (tab.id === 'visits' && hasCompletedSiteVisit) ||
             (tab.id === 'design' && hasDesignReadyForReview);
           const lockMessage =
-            tab.id === 'visits'
+            tab.id === 'customer-access'
+              ? 'Record Interested after a call to unlock customer access.'
+              : tab.id === 'visits'
               ? 'Record Interested after a call to unlock site visits.'
               : tab.id === 'design'
                 ? 'Complete a site visit to unlock landscape design.'
@@ -358,9 +381,13 @@ export default async function LeadDetailPage({
             </span>
             <div className="min-w-0">
               <p className="text-xs font-medium text-ink-muted">Mobile</p>
-              <a href={telHref(lead.mobile_country_code, lead.mobile_normalized)} className="block truncate text-sm font-semibold text-brand-700 hover:underline">
-                {mobile}
-              </a>
+              {revealedTelHref ? (
+                <a href={revealedTelHref} className="block truncate text-sm font-semibold text-brand-700 hover:underline">
+                  {displayMobile}
+                </a>
+              ) : (
+                <p className="block truncate text-sm font-semibold text-ink">{displayMobile}</p>
+              )}
             </div>
           </div>
           {lead.email ? (
@@ -423,6 +450,9 @@ export default async function LeadDetailPage({
               selectedOutcome={latestCallOutcome ?? null}
               readOnly={isTerminalLead}
               allowReopen={lead.status === 'LOST' && user.isAdmin}
+              callAttemptRequired={!hasPendingCallAttempt}
+              designers={designers}
+              defaultAddress={lead.site_address ?? lead.location_text}
             />
           </CardBody>
         </Card>
@@ -465,7 +495,9 @@ export default async function LeadDetailPage({
         <CardHeader
           title="Follow-ups"
           description={`${openFollowUps.length} open`}
-          action={writable ? <CreateFollowUpDialog leadId={lead.id} assignees={bdms} /> : null}
+          action={writable ? (
+            <CreateFollowUpDialog leadId={lead.id} assignees={bdms} canAssign={user.isAdmin} />
+          ) : null}
         />
         <CardBody className="p-0">
           {followUps.length === 0 ? (
@@ -473,7 +505,6 @@ export default async function LeadDetailPage({
           ) : (
             <ul className="divide-y divide-line">
               {followUps.map((followUp) => {
-                const followUpDue = formatDue(followUp.due_at);
                 return (
                   <li key={followUp.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
@@ -486,7 +517,7 @@ export default async function LeadDetailPage({
                     <FollowUpStatusBadge value={followUp.status} />
                     {followUp.status !== 'COMPLETED' && followUp.status !== 'CANCELLED' ? (
                       <>
-                        <DueBadge label={followUpDue.label} tone={followUpDue.tone} />
+                        <DueBadge value={followUp.due_at} />
                         <FollowUpOutcomeActions
                           followUpId={followUp.id}
                           leadId={lead.id}
@@ -742,45 +773,63 @@ export default async function LeadDetailPage({
           {activities.length === 0 ? (
             <EmptyState title="Nothing recorded yet" />
           ) : (
-            <ol className="divide-y divide-line">
-              {activities.map((activity) => {
+            <ol className="space-y-3 px-3 py-3 sm:px-5">
+              {activities.map((activity, index) => {
                 const author = (activity as { created_by_profile?: { full_name: string } | null })
                   .created_by_profile;
                 const isAttempt = activity.type === 'CALL_ATTEMPT';
 
                 return (
-                  <li key={activity.id} className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={isAttempt ? 'neutral' : 'brand'}>
-                        {humanizeEnum(activity.type)}
-                      </Badge>
-                      {activity.outcome ? (
-                        <Badge tone={outcomeTone(activity.outcome)}>
-                          {humanizeEnum(activity.outcome)}
-                        </Badge>
-                      ) : null}
-                      <span className="text-xs text-ink-muted">
-                        {formatDateTime(activity.activity_at)}
-                        {author ? ` · ${author.full_name}` : ''}
-                      </span>
-                    </div>
-
-                    {activity.notes ? (
-                      <p className="mt-1.5 text-sm whitespace-pre-wrap text-ink">{activity.notes}</p>
+                  <li key={activity.id} className="relative grid grid-cols-[2rem_minmax(0,1fr)] gap-2.5 sm:grid-cols-[2.25rem_minmax(0,1fr)] sm:gap-3">
+                    {index < activities.length - 1 ? (
+                      <span aria-hidden="true" className="absolute -bottom-3 left-[0.975rem] top-1/2 w-px bg-line sm:left-[1.1rem]" />
                     ) : null}
+                    <span className="relative z-10 flex size-8 self-center items-center justify-center rounded-full border border-brand-200 bg-brand-50 text-xs font-semibold tabular-nums text-brand-800 sm:size-9">
+                      {activities.length - index}
+                    </span>
 
-                    {activity.next_action ? (
-                      <p className="mt-1 text-xs text-ink-muted">
-                        <span className="font-medium">Next:</span> {activity.next_action}
-                      </p>
-                    ) : null}
+                    <details className="group overflow-hidden rounded-xl border border-line bg-surface open:border-brand-200 open:shadow-sm">
+                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-3 hover:bg-surface-muted [&::-webkit-details-marker]:hidden sm:px-4">
+                        <span className="min-w-0 space-y-1.5">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={isAttempt ? 'neutral' : 'brand'}>
+                              {humanizeEnum(activity.type)}
+                            </Badge>
+                            {activity.outcome ? (
+                              <Badge tone={outcomeTone(activity.outcome)}>
+                                {humanizeEnum(activity.outcome)}
+                              </Badge>
+                            ) : null}
+                          </span>
+                          <span className="block text-xs text-ink-muted">
+                            {formatDateTime(activity.activity_at)}
+                            {author ? ` · ${author.full_name}` : ''}
+                          </span>
+                        </span>
+                        <LuChevronDown className="mt-1 size-4 shrink-0 text-ink-muted transition-transform group-open:rotate-180" />
+                      </summary>
 
-                    {isAttempt ? (
-                      <p className="mt-1 flex items-start gap-1.5 text-xs text-ink-subtle">
-                        <LuTriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                        Dialler opened. This is not proof the call connected.
-                      </p>
-                    ) : null}
+                      <div className="border-t border-line px-3 py-3 sm:px-4">
+                        {activity.notes ? (
+                          <p className="text-sm whitespace-pre-wrap text-ink">{activity.notes}</p>
+                        ) : (
+                          <p className="text-sm text-ink-muted">No additional notes.</p>
+                        )}
+
+                        {activity.next_action ? (
+                          <p className="mt-2 text-xs text-ink-muted">
+                            <span className="font-medium text-ink">Next:</span> {activity.next_action}
+                          </p>
+                        ) : null}
+
+                        {isAttempt ? (
+                          <p className="mt-2 flex items-start gap-1.5 text-xs text-ink-subtle">
+                            <LuTriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                            Dialler opened. This is not proof the call connected.
+                          </p>
+                        ) : null}
+                      </div>
+                    </details>
                   </li>
                 );
               })}

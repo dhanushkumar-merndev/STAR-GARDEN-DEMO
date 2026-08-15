@@ -442,7 +442,9 @@ export const publicEnquirySchema = z.object({
   company_website: z.string().optional(),
   /** Cloudflare Turnstile token, when a site key is configured. */
   turnstile_token: z.string().optional(),
-  consent: checkboxField.optional(),
+  consent: checkboxField.refine((value) => value, {
+    message: 'Please agree to the privacy notice.',
+  }),
 });
 
 /* -------------------------------------------------------------------------- */

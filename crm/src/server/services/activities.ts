@@ -8,6 +8,7 @@ import { leadStatusForCallOutcome, assertLeadTransition } from '@/lib/state-mach
 import type { SessionUser } from '@/lib/auth/session';
 import { getBusinessSettings } from '@/lib/settings';
 import { automaticRetryDueAt, isAutomaticRetryOutcome } from '@/lib/call-reminders';
+import { telHref } from '@/lib/utils/phone';
 import type { ActivityRow, CallOutcome, LeadStatus } from '@/types/database';
 import { changeLeadStatus, humanizePostgresError } from './leads';
 
@@ -29,7 +30,7 @@ import { changeLeadStatus, humanizePostgresError } from './leads';
 export async function recordCallAttempt(
   user: SessionUser,
   leadId: string,
-): Promise<ActivityRow> {
+): Promise<{ activity: ActivityRow; dialHref: string }> {
   const lead = await assertCanWriteLead(user, leadId);
   const supabase = await createClient();
 
@@ -65,6 +66,19 @@ export async function recordCallAttempt(
     throw new AppError('INTERNAL', 'Could not record the call attempt.', { cause: error });
   }
 
+  if (!lead.first_call_attempt_at) {
+    const { error: revealError } = await supabase
+      .from('leads')
+      .update({ first_call_attempt_at: activity.activity_at })
+      .eq('id', leadId)
+      .is('first_call_attempt_at', null);
+    if (revealError) {
+      throw new AppError('INTERNAL', 'The call was logged, but contact access could not be unlocked.', {
+        cause: revealError,
+      });
+    }
+  }
+
   await recordAudit({
     actorUserId: user.id,
     action: AuditAction.CALL_ATTEMPT_RECORDED,
@@ -73,7 +87,40 @@ export async function recordCallAttempt(
     after: { lead_code: lead.lead_code, note: 'Dialler opened; connection state unknown.' },
   });
 
-  return activity;
+  return {
+    activity,
+    // Returned only after authorization and attempt logging. The number is no
+    // longer embedded in the lead page before Call Customer is pressed.
+    dialHref: telHref(lead.mobile_country_code, lead.mobile_normalized),
+  };
+}
+
+/** One dialler-open attempt authorizes exactly one subsequent manual outcome. */
+export async function assertPendingCallAttempt(user: SessionUser, leadId: string): Promise<void> {
+  const supabase = await createClient();
+  const [{ data: attempt }, { data: outcome }] = await Promise.all([
+    supabase
+      .from('activities')
+      .select('activity_at')
+      .eq('lead_id', leadId)
+      .eq('type', 'CALL_ATTEMPT')
+      .eq('created_by', user.id)
+      .order('activity_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('activities')
+      .select('activity_at')
+      .eq('lead_id', leadId)
+      .eq('type', 'CALL_OUTCOME')
+      .order('activity_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (!attempt || (outcome && new Date(outcome.activity_at) >= new Date(attempt.activity_at))) {
+    throw new AppError('INVALID_TRANSITION', 'Press Call Customer before recording an outcome.');
+  }
 }
 
 export interface LogCallInput {
@@ -106,6 +153,7 @@ export async function logCallOutcome(
   input: LogCallInput,
 ): Promise<LogCallResult> {
   const lead = await assertCanWriteLead(user, input.lead_id);
+  await assertPendingCallAttempt(user, input.lead_id);
   const supabase = await createClient();
 
   const noteParts = [input.notes, input.preferred_site_visit_at

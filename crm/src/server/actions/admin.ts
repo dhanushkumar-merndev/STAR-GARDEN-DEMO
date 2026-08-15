@@ -112,7 +112,18 @@ export async function updateOwnProfileAction(
 
 /** Clears the shared one-hour Admin analytics cache and reloads the dashboard. */
 export async function refreshAdminDashboardAction(): Promise<void> {
-  await requireAdmin();
+  const user = await requireAdmin();
+  const rate = await checkRateLimit({
+    bucket: 'admin_dashboard_refresh',
+    identifier: user.id,
+    limit: 3,
+    windowSeconds: 60,
+  });
+  if (!rate.allowed) {
+    throw new AppError('RATE_LIMITED', 'You can refresh up to 3 times per minute. Please wait and try again.', {
+      meta: { retryAfterSeconds: rate.retryAfterSeconds },
+    });
+  }
   const supabase = await createClient();
   const { error } = await supabase.rpc('refresh_admin_dashboard_cache');
 
@@ -122,6 +133,39 @@ export async function refreshAdminDashboardAction(): Promise<void> {
 
   revalidatePath('/dashboard');
   revalidatePath('/reports');
+}
+
+export async function loadSalesMemberAnalyticsAction(
+  userId: string,
+  from: string,
+  to: string,
+): Promise<ActionResult<{ days: Array<{ day: string; outcomes: Array<{ label: string; count: number }> }> }>> {
+  return actionResult(async () => {
+    await requireAdmin();
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new AppError('VALIDATION', 'Invalid sales member.');
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (
+      Number.isNaN(fromDate.getTime()) ||
+      Number.isNaN(toDate.getTime()) ||
+      toDate <= fromDate ||
+      toDate.getTime() - fromDate.getTime() > 366 * 86_400_000
+    ) {
+      throw new AppError('VALIDATION', 'Choose a valid date range up to one year.');
+    }
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('admin_sales_member_daily_kpis', {
+      p_user_id: userId,
+      p_from: fromDate.toISOString(),
+      p_to: toDate.toISOString(),
+    });
+    if (error || !data || Array.isArray(data) || typeof data !== 'object') {
+      throw new AppError('INTERNAL', 'Could not load sales member analytics.', { cause: error });
+    }
+    return data as unknown as {
+      days: Array<{ day: string; outcomes: Array<{ label: string; count: number }> }>;
+    };
+  });
 }
 
 /**

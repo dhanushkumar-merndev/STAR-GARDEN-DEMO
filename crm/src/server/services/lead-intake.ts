@@ -30,6 +30,7 @@ export interface DuplicateMatch {
   created_at: string;
   assigned_bdm_id: string | null;
   assigned_bdm_name: string | null;
+  matched_on: 'mobile' | 'email';
 }
 
 /**
@@ -60,6 +61,7 @@ export async function findDuplicateLead(
     .maybeSingle();
 
   let match = byMobile;
+  let matchedOn: DuplicateMatch['matched_on'] = 'mobile';
 
   // Email is the secondary signal — a household sharing one mobile is common,
   // but a repeated email on a live lead is almost always the same enquiry.
@@ -74,6 +76,7 @@ export async function findDuplicateLead(
       .limit(1)
       .maybeSingle();
     match = byEmail;
+    if (byEmail) matchedOn = 'email';
   }
 
   if (!match) return null;
@@ -88,7 +91,7 @@ export async function findDuplicateLead(
     ownerName = owner?.full_name ?? null;
   }
 
-  return { ...match, assigned_bdm_name: ownerName };
+  return { ...match, assigned_bdm_name: ownerName, matched_on: matchedOn };
 }
 
 export interface IntakeLeadInput {
@@ -171,12 +174,15 @@ export async function intakeLead(
   const duplicate = await findDuplicateLead(input.phone.national, email);
 
   if (duplicate && !options.allowDuplicate) {
+    const matchedEmail = duplicate.matched_on === 'email';
     throw new AppError(
       'DUPLICATE_LEAD',
-      `${duplicate.customer_name} (${duplicate.lead_code}) already exists with this number.`,
+      `${duplicate.customer_name} (${duplicate.lead_code}) already exists with this ${matchedEmail ? 'email address' : 'mobile number'}.`,
       {
         meta: { duplicate },
-        fields: { mobile: 'This number already belongs to a live lead.' },
+        fields: matchedEmail
+          ? { email: 'This email address already belongs to a live lead.' }
+          : { mobile: 'This mobile number already belongs to a live lead.' },
       },
     );
   }

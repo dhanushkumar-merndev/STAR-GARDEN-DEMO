@@ -5,7 +5,6 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listDesignProjects, type DesignScope } from '@/server/services/designs';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DesignStatusBadge, DueBadge } from '@/components/status';
-import { formatDue } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Designs' };
 
@@ -21,6 +20,9 @@ export default async function DesignsPage({
   const scope =
     (typeof params.scope === 'string' ? params.scope : undefined) ??
     (user.role === 'DESIGNER' ? 'MINE' : 'ALL');
+  const designerId = typeof params.designer === 'string' && /^[0-9a-f-]{36}$/i.test(params.designer)
+    ? params.designer
+    : undefined;
 
   const scopes: { value: DesignScope; label: string }[] =
     user.role === 'DESIGNER'
@@ -30,12 +32,13 @@ export default async function DesignsPage({
         ]
       : [
           { value: 'ALL', label: 'All' },
-          { value: 'AWAITING_ASSIGNMENT', label: 'Needs designer' },
+          { value: 'PENDING', label: 'Pending' },
+          { value: 'COMPLETED', label: 'Completed' },
           { value: 'READY_FOR_REVIEW', label: 'Ready for review' },
           { value: 'DUE', label: 'Due soon' },
         ];
 
-  const projects = await listDesignProjects(user, { scope: scope as DesignScope });
+  const projects = await listDesignProjects(user, { scope: scope as DesignScope, designerId });
 
   return (
     <>
@@ -54,7 +57,7 @@ export default async function DesignsPage({
           return (
             <Link
               key={option.value}
-              href={`/designs?scope=${option.value}`}
+              href={`/designs?scope=${option.value}${designerId ? `&designer=${designerId}` : ''}`}
               aria-current={active ? 'page' : undefined}
               className={
                 active
@@ -89,7 +92,6 @@ export default async function DesignsPage({
                 location_text: string | null;
               } | null;
               const designer = project.designer as unknown as { full_name: string } | null;
-              const due = formatDue(project.due_at);
 
               return (
                 <li key={project.id}>
@@ -112,7 +114,7 @@ export default async function DesignsPage({
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <Badge tone="neutral">{designer?.full_name ?? 'No designer'}</Badge>
-                      {project.due_at ? <DueBadge label={due.label} tone={due.tone} /> : null}
+                      {project.due_at ? <DueBadge value={project.due_at} /> : null}
                     </div>
                   </Link>
                 </li>

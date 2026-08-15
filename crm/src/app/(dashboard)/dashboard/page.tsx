@@ -25,7 +25,7 @@ import { listFollowUps } from '@/server/services/follow-ups';
 import { listSiteVisits } from '@/server/services/site-visits';
 import { Alert, Card, CardHeader, CardBody, EmptyState, PageHeader, StatTile } from '@/components/ui';
 import { DueBadge, SiteVisitStatusBadge } from '@/components/status';
-import { formatDue, formatDateTime, humanizeEnum } from '@/lib/utils/format';
+import { formatDateTime, humanizeEnum } from '@/lib/utils/format';
 import {
   LeadRankingChart,
   LeadShareChart,
@@ -35,6 +35,8 @@ import { AnalyticsControls } from '@/components/dashboard/analytics-controls';
 import { OperationalKpis } from '@/components/dashboard/operational-kpis';
 
 export const metadata: Metadata = { title: 'Dashboard' };
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * Role dashboards (AGENTS.md §12).
@@ -119,7 +121,12 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
         to={dateRange.to}
       />
 
-      <OperationalKpis data={data.operational} rangeLabel={analyticsDescription} />
+      <OperationalKpis
+        data={data.operational}
+        rangeLabel={analyticsDescription}
+        rangeFrom={data.analyticsRange.from}
+        rangeTo={data.analyticsRange.to}
+      />
 
       {false ? (
       <>
@@ -578,7 +585,6 @@ function FollowUpList({
   return (
     <ul className="divide-y divide-line">
       {items.map((followUp) => {
-        const due = formatDue(followUp.due_at);
         return (
           <li key={followUp.id} className="px-4 py-3">
             <Link href={`/leads/${followUp.lead_id}`} className="block">
@@ -589,7 +595,7 @@ function FollowUpList({
                     {followUp.lead?.customer_name} · {followUp.lead?.lead_code}
                   </p>
                 </div>
-                <DueBadge label={due.label} tone={due.tone} />
+                <DueBadge value={followUp.due_at} />
               </div>
             </Link>
           </li>

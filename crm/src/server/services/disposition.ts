@@ -9,7 +9,7 @@ import type { SessionUser } from '@/lib/auth/session';
 import type { LeadRow, LeadStatus } from '@/types/database';
 import { humanizePostgresError } from './leads';
 import { createFollowUp } from './follow-ups';
-import { refreshLeadNextAction } from './activities';
+import { assertPendingCallAttempt, refreshLeadNextAction } from './activities';
 import { siteVisitGate } from './designs';
 
 /**
@@ -60,6 +60,37 @@ export async function recordDisposition(
   input: DispositionInput,
 ): Promise<DispositionResult> {
   const lead = await assertCanWriteLead(user, input.lead_id);
+  const supabase = await createClient();
+  const { data: latestOutcome } = await supabase
+    .from('activities')
+    .select('outcome')
+    .eq('lead_id', input.lead_id)
+    .eq('type', 'CALL_OUTCOME')
+    .not('outcome', 'is', null)
+    .order('activity_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // A brand-new lead must be called before any first outcome, including
+  // Interested. After prior contact, Interested remains available for an
+  // inbound customer callback/reopening flow without pretending CRM detected
+  // a new outbound call.
+  const mayReopenWithoutAttempt =
+    input.disposition === 'INTERESTED' && latestOutcome?.outcome != null;
+  const mayCloseInterestedWithoutAttempt =
+    input.disposition === 'NOT_INTERESTED' && latestOutcome?.outcome === 'INTERESTED';
+  if (!mayReopenWithoutAttempt && !mayCloseInterestedWithoutAttempt) {
+    await assertPendingCallAttempt(user, input.lead_id);
+  }
+
+  if (input.disposition === 'INTERESTED') {
+    if (latestOutcome?.outcome === 'INTERESTED') {
+      throw new AppError(
+        'INVALID_TRANSITION',
+        'This lead is already Interested. Record Connected, create a follow-up, or choose a changed outcome.',
+      );
+    }
+  }
 
   switch (input.disposition) {
     case 'NOT_INTERESTED':

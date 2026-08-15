@@ -39,6 +39,15 @@ export function NotificationMenu({
     });
   }
 
+  function openNotification(notificationId: string, href: string) {
+    const formData = new FormData();
+    formData.set('notification_id', notificationId);
+    startTransition(async () => {
+      const result = await markNotificationReadAction(null, formData);
+      if (result.ok) router.push(href);
+    });
+  }
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
@@ -81,7 +90,7 @@ export function NotificationMenu({
           <div className="max-h-80 overflow-y-auto overscroll-contain bg-canvas p-3">
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-ink-muted">
-                No notifications yet.
+                No unread notifications.
               </div>
             ) : (
               <ul className="space-y-2.5">
@@ -101,7 +110,12 @@ export function NotificationMenu({
                           <LuBell className="size-4" />
                         </span>
                         <DropdownMenu.Item asChild>
-                          <Link href={href ?? '/notifications'} className="min-w-0 flex-1 outline-none">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => openNotification(notification.id, href ?? '/notifications')}
+                            className="min-w-0 flex-1 text-left outline-none disabled:opacity-60"
+                          >
                             <p className={`flex items-center gap-2 text-sm ${unread ? 'font-semibold text-ink' : 'text-ink-muted'}`}>
                               <span>{notification.title}</span>
                               {unread ? <span className="size-1.5 shrink-0 rounded-full bg-brand-600" aria-hidden="true" /> : null}
@@ -114,7 +128,7 @@ export function NotificationMenu({
                             <p className="mt-1 text-[11px] text-ink-subtle">
                               {formatRelative(notification.created_at)}
                             </p>
-                          </Link>
+                          </button>
                         </DropdownMenu.Item>
                         {unread ? (
                           <button

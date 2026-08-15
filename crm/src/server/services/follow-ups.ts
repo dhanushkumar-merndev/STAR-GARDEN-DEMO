@@ -29,13 +29,18 @@ export async function createFollowUp(
 ): Promise<FollowUpRow> {
   const lead = await assertCanWriteLead(user, input.lead_id);
   const supabase = await createClient();
+  // Only Admins may redirect work to another staff member. Everyone else's
+  // follow-up stays with the lead owner, regardless of submitted form data.
+  const assigneeId = user.isAdmin
+    ? input.assigned_to ?? lead.assigned_bdm_id ?? user.id
+    : lead.assigned_bdm_id ?? user.id;
 
   const { data: followUp, error } = await supabase
     .from('follow_ups')
     .insert({
       lead_id: input.lead_id,
       // Default to whoever owns the lead, so a follow-up never lands nowhere.
-      assigned_to: input.assigned_to ?? lead.assigned_bdm_id ?? user.id,
+      assigned_to: assigneeId,
       title: input.title,
       notes: input.notes ?? null,
       due_at: input.due_at,
@@ -195,7 +200,7 @@ export async function cancelFollowUp(
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export type FollowUpScope = 'TODAY' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED' | 'ALL';
+export type FollowUpScope = 'PENDING' | 'TODAY' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED' | 'ALL';
 
 export async function listFollowUps(
   user: SessionUser,
@@ -222,6 +227,9 @@ export async function listFollowUps(
   if (options.leadId) query = query.eq('lead_id', options.leadId);
 
   switch (options.scope ?? 'ALL') {
+    case 'PENDING':
+      query = query.in('status', ['OPEN', 'OVERDUE']);
+      break;
     case 'TODAY':
       query = query
         .in('status', ['OPEN', 'OVERDUE'])

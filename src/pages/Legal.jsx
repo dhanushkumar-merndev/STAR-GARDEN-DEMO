@@ -29,9 +29,15 @@ export default function Legal() {
             solely to respond to your request for landscaping, plants-on-hire or maintenance services.
           </p>
           <p>
-            The enquiry form on this website does not store anything. Submitting it opens WhatsApp (or
-            your email client) on your own device with the details pre-filled, so the message is sent
-            directly by you to {company.phone} — no copy is written to any server operated by this site.
+            When you submit the enquiry form, the details are sent securely to the Star Gardens CRM so
+            our team can contact you, manage the enquiry and avoid duplicate records. Access is limited
+            to authorised staff and the information is retained only for legitimate customer-service and
+            operational purposes.
+          </p>
+          <p>
+            The form may use Cloudflare Turnstile to prevent automated spam. Cloudflare may process
+            technical information such as your IP address and browser signals solely to perform that
+            security check.
           </p>
           <p>
             We do not sell, rent or share your personal information with third parties for marketing

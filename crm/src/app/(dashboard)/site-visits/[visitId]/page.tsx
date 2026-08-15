@@ -31,7 +31,7 @@ import {
 import { VisitJourney } from '@/components/site-visits/journey';
 import { formatDate, formatDateTime } from '@/lib/utils/format';
 import { hasVisitDayArrived } from '@/lib/utils/visit-timing';
-import { formatMobile, telHref } from '@/lib/utils/phone';
+import { maskMobile } from '@/lib/utils/phone';
 import { googleMapsDirectionsUrl, googleMapsViewUrl } from '@/lib/utils/maps';
 
 export const metadata: Metadata = { title: 'Site visit' };
@@ -104,12 +104,9 @@ export default async function SiteVisitPage({
               <p className="truncate text-base font-semibold text-ink">{visit.address ?? 'Site address not added'}</p>
               {attendeeNames ? <p className="mt-0.5 truncate text-sm text-ink-muted">{attendeeNames}</p> : null}
               {lead?.mobile_normalized ? (
-                <a
-                  href={telHref(lead.mobile_country_code, lead.mobile_normalized)}
-                  className="mt-1 inline-block text-sm font-medium text-brand-700 hover:underline"
-                >
-                  {formatMobile(lead.mobile_country_code, lead.mobile_normalized)}
-                </a>
+                <p className="mt-1 text-sm font-medium text-ink-muted">
+                  {maskMobile(lead.mobile_country_code, lead.mobile_normalized)}
+                </p>
               ) : null}
             </div>
             {directionsUrl ? (

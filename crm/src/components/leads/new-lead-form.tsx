@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Alert, Button, Field, Input, Select, Textarea } from '@/components/ui';
-import { FormError, PendingFieldset, SubmitButton, fieldError } from '@/components/forms/form-parts';
+import { FormError, fieldError } from '@/components/forms/form-parts';
 import { createLeadAction } from '@/server/actions/leads';
 import type { ActionResult } from '@/lib/errors';
 
@@ -25,6 +25,7 @@ interface DuplicateMeta {
   customer_name: string;
   status: string;
   assigned_bdm_name: string | null;
+  matched_on: 'mobile' | 'email';
 }
 
 export function NewLeadForm({
@@ -42,34 +43,58 @@ export function NewLeadForm({
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
   const [duplicate, setDuplicate] = React.useState<DuplicateMeta | null>(null);
   const [confirmed, setConfirmed] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+
+    const formData = new FormData(event.currentTarget);
     if (confirmed) formData.set('confirm_duplicate', 'true');
 
-    const next = await createLeadAction(null, formData);
-    setResult(next);
+    setPending(true);
+    try {
+      const next = await createLeadAction(null, formData);
+      setResult(next);
 
-    if (next.ok) {
-      toast.success(`Lead ${next.data.leadCode} created.`);
-      router.push(`/leads/${next.data.leadId}`);
-      return;
+      if (next.ok) {
+        toast.success(`Lead ${next.data.leadCode} created.`);
+        router.push(`/leads/${next.data.leadId}`);
+        return;
+      }
+
+      if (next.code === 'DUPLICATE_LEAD' && next.meta?.duplicate) {
+        setDuplicate(next.meta.duplicate as DuplicateMeta);
+        return;
+      }
+
+      setDuplicate(null);
+    } finally {
+      setPending(false);
     }
-
-    if (next.code === 'DUPLICATE_LEAD' && next.meta?.duplicate) {
-      setDuplicate(next.meta.duplicate as DuplicateMeta);
-      return;
-    }
-
-    setDuplicate(null);
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4"
+      noValidate
+      onInput={() => {
+        if (duplicate || result) {
+          setDuplicate(null);
+          setResult(null);
+          setConfirmed(false);
+        }
+      }}
+    >
       {duplicate ? (
-        <Alert tone="warn" title="This number already exists">
+        <Alert
+          tone="warn"
+          title={duplicate.matched_on === 'email' ? 'This email already exists' : 'This mobile number already exists'}
+        >
           <p>
             <span className="font-medium">{duplicate.customer_name}</span> ({duplicate.lead_code})
-            is already in the CRM
+            {' '}is already in the CRM with the same {duplicate.matched_on === 'email' ? 'email address' : 'mobile number'}
             {duplicate.assigned_bdm_name ? `, owned by ${duplicate.assigned_bdm_name}` : ' and unassigned'}.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -83,6 +108,7 @@ export function NewLeadForm({
               variant="outline"
               onClick={() => {
                 setConfirmed(true);
+                setResult(null);
                 toast.info('Submit again to create a separate lead.');
               }}
             >
@@ -99,7 +125,7 @@ export function NewLeadForm({
 
       <FormError result={duplicate ? null : result} />
 
-      <PendingFieldset>
+      <fieldset disabled={pending} className="space-y-4 disabled:opacity-60">
         <Field
           label="Customer name"
           htmlFor="customer_name"
@@ -196,10 +222,12 @@ export function NewLeadForm({
         ) : (
           <input type="hidden" name="assigned_bdm_id" value={defaultAssigneeId ?? ''} />
         )}
-      </PendingFieldset>
+      </fieldset>
 
       <div className="flex gap-2 pt-2">
-        <SubmitButton pendingLabel="Creating…">Create lead</SubmitButton>
+        <Button type="submit" disabled={pending} aria-busy={pending}>
+          {pending ? 'Creating…' : 'Create lead'}
+        </Button>
         <Link href="/leads">
           <Button variant="ghost">Cancel</Button>
         </Link>

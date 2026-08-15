@@ -11,6 +11,7 @@ import {
   BusinessSettingsForm,
   NormalizationForm,
 } from '@/components/settings/business-form';
+import { DeletedLeadsSetting, type PurgeLeadRow } from '@/components/settings/deleted-leads';
 
 export const metadata: Metadata = { title: 'Settings' };
 
@@ -25,13 +26,18 @@ export default async function SettingsPage() {
     getNormalizationSettings(),
   ]);
 
-  const [{ count: staffCount }, { count: pendingCount }] = await Promise.all([
+  const [{ count: staffCount }, { count: pendingCount }, { data: purgeLeads }] = await Promise.all([
     supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
     supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true })
       .eq('is_active', false)
       .is('approved_at', null),
+    supabase
+      .from('leads')
+      .select('id, customer_name, mobile_country_code, mobile_normalized, email, status, source')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const links = [
@@ -91,6 +97,9 @@ export default async function SettingsPage() {
                 </li>
               );
             })}
+            <li>
+              <DeletedLeadsSetting leads={(purgeLeads ?? []) as PurgeLeadRow[]} />
+            </li>
           </ul>
         </Card>
 

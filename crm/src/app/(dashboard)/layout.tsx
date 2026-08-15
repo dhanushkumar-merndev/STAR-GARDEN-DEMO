@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .from('notifications')
       .select('id, title, body, entity_type, entity_id, read_at, created_at')
       .eq('user_id', user.id)
+      .is('read_at', null)
       .order('created_at', { ascending: false })
       .limit(12),
   ]);

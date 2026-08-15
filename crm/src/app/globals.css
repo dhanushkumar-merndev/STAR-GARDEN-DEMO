@@ -119,6 +119,20 @@
     max-width: 100%;
   }
 
+  /* Native checkboxes otherwise inherit the browser/OS blue. Keep every
+     checkbox—including plain inputs outside the shared component—on brand. */
+  input[type='checkbox'] {
+    accent-color: var(--color-brand-600);
+  }
+
+  input[type='checkbox']:hover:not(:disabled) {
+    accent-color: var(--color-brand-700);
+  }
+
+  input[type='checkbox']:disabled {
+    cursor: not-allowed;
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-brand-500);
     outline-offset: 2px;

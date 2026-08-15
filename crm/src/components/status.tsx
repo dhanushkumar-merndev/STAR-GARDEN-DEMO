@@ -9,6 +9,8 @@ import type {
   LeadStatus,
   SiteVisitStatus,
 } from '@/types/database';
+import { LiveDueBadge } from '@/components/live-due-badge';
+import { formatDue } from '@/lib/utils/format';
 
 /**
  * Status rendering.
@@ -118,12 +120,22 @@ export const SITE_VISIT_STATUS_LABELS = SITE_VISIT;
  * Due-date chip. Overdue reads as the word "Overdue", not as a red dot, so it
  * survives greyscale printing and colour-blind viewers (§16).
  */
-export function DueBadge({ label, tone }: { label: string; tone: 'overdue' | 'today' | 'upcoming' | 'none' }) {
-  const map: Record<typeof tone, Tone> = {
+export function DueBadge({
+  label,
+  tone,
+  value,
+}: {
+  label?: string;
+  tone?: 'overdue' | 'today' | 'upcoming' | 'none';
+  value?: string | Date | null;
+}) {
+  if (value !== undefined) return <LiveDueBadge value={value} initialDue={formatDue(value)} />;
+  const resolvedTone = tone ?? 'none';
+  const map: Record<'overdue' | 'today' | 'upcoming' | 'none', Tone> = {
     overdue: 'danger',
     today: 'warn',
     upcoming: 'neutral',
     none: 'neutral',
   };
-  return <Badge tone={map[tone]}>{label}</Badge>;
+  return <Badge tone={map[resolvedTone]}>{label ?? 'No date'}</Badge>;
 }

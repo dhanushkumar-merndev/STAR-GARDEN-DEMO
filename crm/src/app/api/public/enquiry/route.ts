@@ -177,12 +177,10 @@ async function verifyTurnstile(token: string | undefined, ip: string): Promise<b
       signal: AbortSignal.timeout(5000),
     });
 
-    const result = (await response.json()) as { success?: boolean };
-    return result.success === true;
+    const result = (await response.json()) as { success?: boolean; action?: string };
+    return result.success === true && result.action === 'website_enquiry';
   } catch (error) {
-    // A captcha outage must not take the enquiry form down; the honeypot and
-    // rate limit still apply.
-    console.error('[public-enquiry] turnstile verification failed, allowing', error);
-    return true;
+    console.error('[public-enquiry] turnstile verification failed', error);
+    return false;
   }
 }

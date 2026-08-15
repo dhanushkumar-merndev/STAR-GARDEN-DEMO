@@ -22,11 +22,13 @@ export function DialogContent({
   description,
   children,
   className,
+  headerAction,
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
   className?: string;
+  headerAction?: React.ReactNode;
 }) {
   return (
     <DialogPrimitive.Portal>
@@ -55,12 +57,15 @@ export function DialogContent({
               <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>
             )}
           </div>
-          <DialogPrimitive.Close
-            className="tap -mt-1 -mr-1 flex items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
-            aria-label="Close"
-          >
-            <LuX className="size-5" />
-          </DialogPrimitive.Close>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {headerAction}
+            <DialogPrimitive.Close
+              className="tap -mt-1 -mr-1 flex items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-ink"
+              aria-label="Close"
+            >
+              <LuX className="size-5" />
+            </DialogPrimitive.Close>
+          </div>
         </div>
 
         <div

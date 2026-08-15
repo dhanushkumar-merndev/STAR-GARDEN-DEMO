@@ -1,5 +1,6 @@
 'use client';
 
+import { useFormStatus } from 'react-dom';
 import { LuCalendarDays, LuRefreshCw } from 'react-icons/lu';
 import { refreshAdminDashboardAction } from '@/server/actions/admin';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
@@ -18,13 +19,7 @@ export function AnalyticsControls({
 }) {
   const refreshButton = (
     <form action={refreshAdminDashboardAction} className="shrink-0 lg:border-l lg:border-line lg:pl-3">
-      <button
-        type="submit"
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink transition hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand lg:w-auto"
-      >
-        <LuRefreshCw className="size-4" />
-        Refresh now
-      </button>
+      <RefreshSubmitButton />
     </form>
   );
 
@@ -72,5 +67,20 @@ export function AnalyticsControls({
         </p>
       </div>
     </>
+  );
+}
+
+function RefreshSubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink transition hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-wait disabled:opacity-70 lg:w-auto"
+    >
+      <LuRefreshCw className={`size-4 ${pending ? 'animate-spin' : ''}`} />
+      {pending ? 'Refreshing…' : 'Refresh now'}
+    </button>
   );
 }

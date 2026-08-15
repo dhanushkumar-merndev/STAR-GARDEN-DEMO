@@ -32,12 +32,8 @@ const OTHER_OUTCOMES: { value: CallOutcome; label: string }[] = [
 
 export function CallCustomerButton({
   leadId,
-  telHref,
-  displayNumber,
 }: {
   leadId: string;
-  telHref: string;
-  displayNumber: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -52,17 +48,18 @@ export function CallCustomerButton({
     startTransition(async () => {
       const result = await recordCallAttemptAction(formData);
       if (!result.ok) {
-        toast.error('The call was not logged as an attempt. Record the outcome manually.');
+        toast.error(result.message);
+        return;
       }
       router.refresh();
-      window.location.href = telHref;
+      window.location.href = result.data.dialHref;
     });
   }
 
   return (
     <Button onClick={handleCall} size="lg" className="gap-2" disabled={pending}>
       <LuPhone className="size-4.5" />
-      Call {displayNumber}
+      Call Customer
     </Button>
   );
 }

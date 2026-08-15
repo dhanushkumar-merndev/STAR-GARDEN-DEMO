@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { LuArrowLeft } from 'react-icons/lu';
+import { LuArrowLeft, LuExternalLink } from 'react-icons/lu';
 import { notFound } from 'next/navigation';
 import { requirePageUser } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
@@ -69,7 +69,17 @@ export default async function DesignProjectPage({
       <PageHeader
         title={lead?.customer_name ?? 'Design project'}
         subtitle={lead?.lead_code}
-        action={<DesignStatusBadge value={project.status} />}
+        action={(
+          <div className="flex items-center gap-2">
+            {lead ? (
+              <Link href={`/leads/${lead.id}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-brand-700 hover:bg-brand-50">
+                Open lead
+                <LuExternalLink className="size-4" />
+              </Link>
+            ) : null}
+            <DesignStatusBadge value={project.status} />
+          </div>
+        )}
       />
 
       <Card>

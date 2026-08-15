@@ -218,6 +218,7 @@ export type LeadRow = {
   design_required: boolean;
   next_action_at: string | null;
   last_activity_at: string;
+  first_call_attempt_at: string | null;
   lost_reason: string | null;
   created_by: string | null;
   created_at: string;
@@ -1008,6 +1009,30 @@ export type Database = {
         Returns: Json;
       };
       admin_dashboard_call_outcome_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_sales_member_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_sales_member_daily_kpis: {
+        Args: { p_user_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_followup_member_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_site_visit_details: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_designer_kpis: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      admin_dashboard_execution_details: {
         Args: { p_from: string; p_to: string };
         Returns: Json;
       };

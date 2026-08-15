@@ -4,7 +4,6 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  LuCalendarClock,
   LuCircleCheck,
   LuPhoneMissed,
   LuPhoneOff,
@@ -17,6 +16,7 @@ import { Alert, Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { logCallAction } from '@/server/actions/leads';
 import { recordDispositionAction } from '@/server/actions/workflow';
+import { scheduleSiteVisitAction } from '@/server/actions/workflow';
 import { cn } from '@/lib/utils/cn';
 import type { CallOutcome } from '@/types/database';
 
@@ -31,6 +31,10 @@ export interface DispositionButtonsProps {
   readOnly?: boolean;
   /** Admins may explicitly reopen a lost lead by recording Interested. */
   allowReopen?: boolean;
+  /** A fresh Call Customer attempt is required for every saved outcome. */
+  callAttemptRequired?: boolean;
+  designers: { id: string; full_name: string }[];
+  defaultAddress: string | null;
 }
 
 type AfterCallChoice = CallOutcome;
@@ -44,11 +48,6 @@ const CHOICES: {
     key: 'INTERESTED',
     label: 'Interested',
     icon: LuThumbsUp,
-  },
-  {
-    key: 'CALL_LATER',
-    label: 'Create follow-up',
-    icon: LuCalendarClock,
   },
   {
     key: 'NOT_INTERESTED',
@@ -73,6 +72,9 @@ export function DispositionButtons({
   selectedOutcome,
   readOnly = false,
   allowReopen = false,
+  callAttemptRequired = false,
+  designers,
+  defaultAddress,
 }: DispositionButtonsProps) {
   const router = useRouter();
   const [choice, setChoice] = React.useState<AfterCallChoice | null>(null);
@@ -93,7 +95,33 @@ export function DispositionButtons({
           toast.error(result.message);
           return;
         }
-        toast.success(NEXT_STEP_COPY[result.data.kind]);
+
+        if (choice === 'INTERESTED') {
+          const visitData = new FormData();
+          visitData.set('lead_id', leadId);
+          visitData.set('scheduled_start_at', String(formData.get('visit_scheduled_start_at') ?? ''));
+          visitData.set('address', String(formData.get('visit_address') ?? ''));
+          visitData.set('map_url', String(formData.get('visit_map_url') ?? ''));
+          visitData.set('designer_id', String(formData.get('visit_designer_id') ?? ''));
+          visitData.set('notes', String(formData.get('visit_notes') ?? ''));
+
+          const visitResult = await scheduleSiteVisitAction(null, visitData);
+          if (!visitResult.ok) {
+            setFieldErrors(
+              Object.fromEntries(
+                Object.entries(visitResult.fields ?? {}).map(([key, value]) => [`visit_${key}`, value]),
+              ),
+            );
+            toast.error('Interested was saved, but the site visit could not be scheduled. Use the Site visits tab.');
+            setChoice(null);
+            router.push(`/leads/${leadId}?tab=visits`);
+            router.refresh();
+            return;
+          }
+          toast.success('Interested saved and site visit scheduled.');
+        } else {
+          toast.success(NEXT_STEP_COPY[result.data.kind]);
+        }
       } else {
         formData.set('outcome', choice);
         const result = await logCallAction(null, formData);
@@ -124,23 +152,40 @@ export function DispositionButtons({
             : 'The recorded call outcome is retained for history. Ask an Admin to reopen the lead before recording a new outcome.'}
         </Alert>
       ) : null}
+      {callAttemptRequired && !readOnly && selectedOutcome !== 'INTERESTED' ? (
+        <Alert tone="neutral" title="Call the customer first">
+          {selectedOutcome
+            ? 'Interested can reopen a previously contacted lead. Other outcomes unlock after you press Call Customer.'
+            : 'All outcomes, including Interested, unlock after you press Call Customer.'}
+        </Alert>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {CHOICES.map((item) => {
           const Icon = item.icon;
-          const active = (choice ?? optimisticOutcome ?? selectedOutcome) === item.key;
+          // Once the attempt is consumed, the saved result belongs in the
+          // "Last call" badge above. Keeping its action button green while all
+          // buttons are locked makes it look clickable/half-selected.
+          const availableWithoutAttempt =
+            (item.key === 'INTERESTED' && selectedOutcome !== null) ||
+            (item.key === 'NOT_INTERESTED' && selectedOutcome === 'INTERESTED');
+          const attemptLocked = callAttemptRequired && !availableWithoutAttempt;
+          const alreadyInterested = item.key === 'INTERESTED' && selectedOutcome === 'INTERESTED';
+          const active = !alreadyInterested && !attemptLocked &&
+            (choice ?? optimisticOutcome ?? selectedOutcome) === item.key;
           const canReopenWithThisChoice = allowReopen && item.key === 'INTERESTED';
           return (
             <button
               key={item.key}
               type="button"
-              disabled={readOnly && !canReopenWithThisChoice}
-              onClick={() => (!readOnly || canReopenWithThisChoice) && setChoice(item.key)}
+              disabled={alreadyInterested || attemptLocked || (readOnly && !canReopenWithThisChoice)}
+              title={alreadyInterested ? 'Interested is already the latest outcome.' : undefined}
+              onClick={() => (!alreadyInterested && !attemptLocked && (!readOnly || canReopenWithThisChoice)) && setChoice(item.key)}
               className={cn(
                 'flex h-11 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition-all',
                 active
                   ? 'border-brand-600 bg-brand-600 text-white shadow-sm hover:bg-brand-700'
                   : 'border-line bg-surface text-ink hover:border-brand-300 hover:bg-brand-50',
-                readOnly && !canReopenWithThisChoice && 'cursor-not-allowed opacity-70',
+                (alreadyInterested || attemptLocked || (readOnly && !canReopenWithThisChoice)) && 'cursor-not-allowed opacity-55',
               )}
             >
               <Icon className="size-4" />
@@ -199,9 +244,45 @@ export function DispositionButtons({
               ) : null}
 
               {choice === 'INTERESTED' ? (
-                <Alert tone="ok">
-                  Save this, then schedule the site visit. Assign a landscape designer after the visit is completed.
-                </Alert>
+                <div className="space-y-4 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+                  <Alert tone="ok">Record interest and schedule the site visit together.</Alert>
+                  <Field
+                    label="Site visit date and time"
+                    htmlFor="visit_scheduled_start_at"
+                    required
+                    error={fieldErrors.visit_scheduled_start_at}
+                  >
+                    <Input id="visit_scheduled_start_at" name="visit_scheduled_start_at" type="datetime-local" required />
+                  </Field>
+                  <Field label="Site address" htmlFor="visit_address" required error={fieldErrors.visit_address}>
+                    <Textarea id="visit_address" name="visit_address" rows={2} required defaultValue={defaultAddress ?? ''} />
+                  </Field>
+                  <Field label="Map link" htmlFor="visit_map_url" error={fieldErrors.visit_map_url}>
+                    <Input id="visit_map_url" name="visit_map_url" type="url" placeholder="https://maps.app.goo.gl/…" />
+                  </Field>
+                  {designers.length > 0 ? (
+                    <Field
+                      label="Landscape Designer attending"
+                      htmlFor="visit_designer_id"
+                      required
+                      error={fieldErrors.visit_designer_id}
+                    >
+                      <Select id="visit_designer_id" name="visit_designer_id" defaultValue="" required>
+                        <option value="" disabled>Choose a designer</option>
+                        {designers.map((designer) => (
+                          <option key={designer.id} value={designer.id}>{designer.full_name}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ) : (
+                    <Alert tone="warn" title="No landscape designer available">
+                      Add a Designer under Settings → Users before recording Interested.
+                    </Alert>
+                  )}
+                  <Field label="Visit notes" htmlFor="visit_notes" error={fieldErrors.visit_notes}>
+                    <Textarea id="visit_notes" name="visit_notes" rows={2} placeholder="Gate code, parking, who to ask for…" />
+                  </Field>
+                </div>
               ) : null}
 
               <Field
@@ -221,8 +302,8 @@ export function DispositionButtons({
                 <Button type="button" variant="outline" onClick={() => setChoice(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={pending}>
-                  {pending ? 'Saving...' : 'Save outcome'}
+                <Button type="submit" disabled={pending || (choice === 'INTERESTED' && designers.length === 0)}>
+                  {pending ? 'Saving...' : choice === 'INTERESTED' ? 'Save and schedule visit' : 'Save outcome'}
                 </Button>
               </div>
             </form>

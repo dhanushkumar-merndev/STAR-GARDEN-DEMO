@@ -126,6 +126,13 @@ export function formatMobile(countryCode: string, national: string): string {
   return `${countryCode} ${national}`;
 }
 
+/** Safe display before an authorized staff member explicitly starts a call. */
+export function maskMobile(countryCode: string, national: string): string {
+  const visible = national.slice(-3);
+  const hidden = '•'.repeat(Math.max(0, national.length - visible.length));
+  return `${countryCode} ${hidden} ${visible}`;
+}
+
 /**
  * The `tel:` target for the device dialler (§6.1). This is the entire extent of
  * the CRM's involvement in a call — there is no telephony API (§3.2, §6.3).

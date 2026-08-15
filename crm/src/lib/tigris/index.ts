@@ -194,6 +194,12 @@ export async function deleteOrphanObject(objectKey: string): Promise<void> {
   }
 }
 
+/** Permanently removes a recorded object and surfaces failures to the caller. */
+export async function deleteStoredObject(objectKey: string): Promise<void> {
+  const { s3, bucket } = client();
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }));
+}
+
 /** Strips quotes and control characters that would break the header. */
 function sanitizeHeaderFilename(filename: string): string {
   return filename.replace(/[\u0000-\u001f"\\]/g, '_').slice(0, 120) || 'download';

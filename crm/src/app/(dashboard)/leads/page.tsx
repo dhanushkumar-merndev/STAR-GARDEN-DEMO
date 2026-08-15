@@ -5,7 +5,7 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listAssignableBdms, listLeads, type LeadListFilters } from '@/server/services/leads';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
-import { formatDue, formatMobileDisplay } from '@/components/leads/helpers';
+import { maskMobile } from '@/lib/utils/phone';
 import type { LeadStatus } from '@/types/database';
 import { LeadFilterForm } from '@/components/leads/lead-filter-form';
 import { MobileSheet } from '@/components/ui/mobile-sheet';
@@ -107,7 +107,6 @@ export default async function LeadsPage({
         <Card>
           <ul className="divide-y divide-line">
             {items.map((lead) => {
-              const due = formatDue(lead.next_action_at);
               return (
                 <li key={lead.id}>
                   <Link
@@ -121,7 +120,7 @@ export default async function LeadsPage({
                         </p>
                         <p className="mt-0.5 truncate text-xs text-ink-muted">
                           {lead.lead_code} ·{' '}
-                          {formatMobileDisplay(lead.mobile_country_code, lead.mobile_normalized)}
+                          {maskMobile(lead.mobile_country_code, lead.mobile_normalized)}
                           {lead.location_text ? ` · ${lead.location_text}` : ''}
                         </p>
                       </div>
@@ -134,7 +133,7 @@ export default async function LeadsPage({
                         {lead.assigned_bdm?.full_name ?? 'Unassigned'}
                       </Badge>
                       {lead.next_action_at ? (
-                        <DueBadge label={due.label} tone={due.tone} />
+                        <DueBadge value={lead.next_action_at} />
                       ) : (
                         <Badge tone="warn">No next action</Badge>
                       )}

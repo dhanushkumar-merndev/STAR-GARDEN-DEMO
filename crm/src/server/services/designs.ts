@@ -424,11 +424,11 @@ export async function approveVersion(
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export type DesignScope = 'MINE' | 'AWAITING_ASSIGNMENT' | 'READY_FOR_REVIEW' | 'DUE' | 'ALL';
+export type DesignScope = 'MINE' | 'PENDING' | 'COMPLETED' | 'AWAITING_ASSIGNMENT' | 'READY_FOR_REVIEW' | 'DUE' | 'ALL';
 
 export async function listDesignProjects(
   user: SessionUser,
-  options: { scope?: DesignScope; limit?: number } = {},
+  options: { scope?: DesignScope; designerId?: string; limit?: number } = {},
 ) {
   const supabase = await createClient();
 
@@ -445,6 +445,12 @@ export async function listDesignProjects(
     case 'AWAITING_ASSIGNMENT':
       query = query.is('assigned_designer_id', null).in('status', ['REQUIRED']);
       break;
+    case 'PENDING':
+      query = query.not('status', 'in', '("APPROVED","CANCELLED")');
+      break;
+    case 'COMPLETED':
+      query = query.eq('status', 'APPROVED');
+      break;
     case 'READY_FOR_REVIEW':
       query = query.eq('status', 'READY_FOR_REVIEW');
       break;
@@ -457,6 +463,8 @@ export async function listDesignProjects(
     default:
       query = query.neq('status', 'CANCELLED');
   }
+
+  if (options.designerId) query = query.eq('assigned_designer_id', options.designerId);
 
   const { data, error } = await query
     .order('due_at', { ascending: true, nullsFirst: false })

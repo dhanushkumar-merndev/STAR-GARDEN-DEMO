@@ -5,7 +5,6 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listExecutionProjects } from '@/server/services/execution';
 import { Alert, Card, EmptyState, PageHeader } from '@/components/ui';
 import { ExecutionStatusBadge, DueBadge } from '@/components/status';
-import { formatDue } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Execution' };
 
@@ -77,7 +76,6 @@ export default async function ExecutionPage({
                 customer_name: string;
                 location_text: string | null;
               } | null;
-              const due = formatDue(project.due_at);
 
               return (
                 <li key={project.id}>
@@ -108,7 +106,7 @@ export default async function ExecutionPage({
                       <span className="text-xs font-medium tabular-nums text-ink-muted">
                         {project.progress_percent}%
                       </span>
-                      {project.due_at ? <DueBadge label={due.label} tone={due.tone} /> : null}
+                      {project.due_at ? <DueBadge value={project.due_at} /> : null}
                     </div>
 
                     {project.blocker_summary ? (
