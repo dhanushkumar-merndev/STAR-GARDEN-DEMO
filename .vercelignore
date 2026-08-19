@@ -1,6 +1,0 @@
-# Keeps the CRM's source, docs and (gitignored but locally-present) secrets
-# out of this project's deployment entirely. This file only affects the
-# frontend Vercel project (Root Directory = "/"). When the CRM is imported as
-# its own Vercel project later (Root Directory = "crm"), Vercel reads
-# crm/.vercelignore instead, so this exclusion has no effect on that build.
-crm
