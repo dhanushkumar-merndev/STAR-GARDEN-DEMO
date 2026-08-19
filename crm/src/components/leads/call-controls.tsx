@@ -2,14 +2,20 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { LuPhone } from 'react-icons/lu';
+import { LuMessageCircle, LuPhone } from 'react-icons/lu';
 import { toast } from 'sonner';
 import { Button, Field, Select, Textarea, Alert, Checkbox } from '@/components/ui';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { ContactQrDialog } from '@/components/leads/contact-qr-dialog';
 import { FormError, PendingFieldset, SubmitButton, fieldError } from '@/components/forms/form-parts';
 import { logCallAction, recordCallAttemptAction } from '@/server/actions/leads';
 import type { ActionResult } from '@/lib/errors';
 import type { CallOutcome } from '@/types/database';
+
+/** Matches the `lg` breakpoint everything else in this app treats as "desktop". */
+function isDesktopViewport(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+}
 
 /**
  * Call Activity and Follow-up Management (AGENTS.md §6).
@@ -37,6 +43,8 @@ export function CallCustomerButton({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+  const [qrOpen, setQrOpen] = React.useState(false);
+  const [dialHref, setDialHref] = React.useState<string | null>(null);
 
   function handleCall() {
     // Save the attempt before navigating to `tel:`. Navigating first can abort
@@ -52,15 +60,77 @@ export function CallCustomerButton({
         return;
       }
       router.refresh();
-      window.location.href = result.data.dialHref;
+
+      // A desktop browser has no dialler to hand a `tel:` link to — offer a
+      // QR code to scan with a phone instead of silently doing nothing.
+      if (isDesktopViewport()) {
+        setDialHref(result.data.dialHref);
+        setQrOpen(true);
+      } else {
+        window.location.href = result.data.dialHref;
+      }
     });
   }
 
   return (
-    <Button onClick={handleCall} size="lg" className="gap-2" disabled={pending}>
-      <LuPhone className="size-4.5" />
-      Call Customer
-    </Button>
+    <>
+      <Button onClick={handleCall} size="lg" className="gap-2" disabled={pending}>
+        <LuPhone className="size-4.5" />
+        Call Customer
+      </Button>
+      {dialHref ? (
+        <ContactQrDialog
+          open={qrOpen}
+          onOpenChange={setQrOpen}
+          title="Call from your phone"
+          description="Desktop browsers can't place phone calls. Scan the code with your phone, or use the button below if this device has its own calling app."
+          href={dialHref}
+          linkLabel="Call from this device"
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Desktop counterpart to the plain `wa.me` link used on a phone: `wa.me` opens
+ * WhatsApp directly there, but on a desktop it either lands on WhatsApp Web
+ * (which staff may not be signed into) or nothing at all, so this offers a QR
+ * to continue on a phone instead — same pattern as {@link CallCustomerButton}.
+ */
+export function WhatsAppCustomerButton({ href }: { href: string }) {
+  const [qrOpen, setQrOpen] = React.useState(false);
+
+  function handleClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (isDesktopViewport()) {
+      event.preventDefault();
+      setQrOpen(true);
+    }
+    // Otherwise let the default `wa.me` navigation happen — a phone has
+    // WhatsApp installed and hands the link straight to it.
+  }
+
+  return (
+    <>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={handleClick}
+        className="flex h-11 items-center justify-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-100"
+      >
+        <LuMessageCircle className="size-4" />
+        WhatsApp customer
+      </a>
+      <ContactQrDialog
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+        title="WhatsApp from your phone"
+        description="Scan the code with your phone to open the chat there, or use the button below to open WhatsApp Web on this device."
+        href={href}
+        linkLabel="Open WhatsApp Web"
+      />
+    </>
   );
 }
 

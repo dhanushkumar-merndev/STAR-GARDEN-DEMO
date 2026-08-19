@@ -8,7 +8,6 @@ import {
   LuInfo,
   LuMail,
   LuMapPin,
-  LuMessageCircle,
   LuPhone,
   LuTriangleAlert,
 } from 'react-icons/lu';
@@ -32,7 +31,7 @@ import {
   SiteVisitStatusBadge,
   SourceBadge,
 } from '@/components/status';
-import { AddNoteDialog, CallCustomerButton } from '@/components/leads/call-controls';
+import { AddNoteDialog, CallCustomerButton, WhatsAppCustomerButton } from '@/components/leads/call-controls';
 import { CompleteVisitDialog, RescheduleVisitDialog } from '@/components/site-visits/visit-controls';
 import {
   AssignLeadDialog,
@@ -282,17 +281,7 @@ export default async function LeadDetailPage({
           {writable ? (
             <div className="flex flex-wrap gap-2 pt-1">
               <CallCustomerButton leadId={lead.id} />
-              {whatsappUrl ? (
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-100"
-                >
-                  <LuMessageCircle className="size-4" />
-                  WhatsApp customer
-                </a>
-              ) : null}
+              {whatsappUrl ? <WhatsAppCustomerButton href={whatsappUrl} /> : null}
             </div>
           ) : null}
         </CardBody>
