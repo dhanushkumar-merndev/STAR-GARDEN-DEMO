@@ -270,7 +270,11 @@ export async function intakeLead(
  * Records an inbound enquiry that was refused as a duplicate.
  *
  * Without this, a customer who fills the website form twice simply vanishes
- * from the record. The audit entry keeps the attempt visible to an Admin.
+ * from the record. The audit entry keeps the attempt visible to an Admin, and
+ * a notification — pointing straight at the existing lead — makes sure that
+ * visibility doesn't depend on someone going looking for it: the public side
+ * always shows the customer success (§15), so this is the one place a human
+ * actually finds out.
  */
 export async function recordDuplicateAttempt(params: {
   source: LeadSource;
@@ -290,4 +294,29 @@ export async function recordDuplicateAttempt(params: {
       existing_lead_code: params.duplicate.lead_code,
     },
   });
+
+  const copy = NotificationCopy.leadDuplicateAttempt(
+    params.duplicate.lead_code,
+    params.customerName,
+    params.duplicate.matched_on,
+  );
+
+  if (params.duplicate.assigned_bdm_id) {
+    // The lead already has an owner — only they (not the whole desk) need to
+    // know someone followed up again.
+    await notify({
+      userId: params.duplicate.assigned_bdm_id,
+      ...copy,
+      entityType: 'lead',
+      entityId: params.duplicate.id,
+    });
+  } else {
+    // Unowned — same rule as a brand-new lead (§8.1 step 6): the desk needs
+    // to know, not one specific person.
+    await notifyMany(await adminUserIds(), {
+      ...copy,
+      entityType: 'lead',
+      entityId: params.duplicate.id,
+    });
+  }
 }

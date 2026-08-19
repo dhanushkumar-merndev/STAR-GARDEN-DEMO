@@ -193,6 +193,17 @@ export const NotificationCopy = {
     body: `${leadCode} · ${customerName}`,
   }),
 
+  /**
+   * Someone resubmitted the public enquiry form (or a Meta lead retried) with
+   * the same mobile/email as a live lead. The public side never says this —
+   * it only ever shows success — so this is the one place a human finds out.
+   */
+  leadDuplicateAttempt: (leadCode: string, customerName: string, matchedOn: 'mobile' | 'email') => ({
+    type: 'LEAD_DUPLICATE_ATTEMPT' as NotificationType,
+    title: 'Duplicate enquiry received',
+    body: `${leadCode} · ${customerName} submitted again (same ${matchedOn === 'email' ? 'email' : 'mobile number'})`,
+  }),
+
   followUpDueSoon: (title: string, leadCode: string) => ({
     type: 'FOLLOW_UP_DUE_SOON' as NotificationType,
     title: 'Follow-up due soon',

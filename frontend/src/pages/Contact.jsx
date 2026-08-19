@@ -149,9 +149,24 @@ export default function Contact() {
           ))}
         </div>
 
-        <div className="mt-12 grid gap-6 lg:mt-16 lg:grid-cols-5">
+        {/* Success has no sidebar to balance against, so it drops the 5-column
+            split and centers as a standalone card instead of sitting stranded
+            in the left 3/5 with empty space beside it. */}
+        <div
+          className={
+            sent
+              ? 'mt-12 flex justify-center lg:mt-16'
+              : 'mt-12 grid gap-6 lg:mt-16 lg:grid-cols-5'
+          }
+        >
           {/* ── ENQUIRY FORM ─────────────────────────────────────────────── */}
-          <Reveal className="rounded-3xl border border-forest-100 bg-white p-7 shadow-sm sm:p-8 lg:col-span-3">
+          <Reveal
+            className={
+              sent
+                ? 'w-full max-w-xl rounded-3xl border border-forest-100 bg-white p-7 shadow-sm sm:p-8'
+                : 'rounded-3xl border border-forest-100 bg-white p-7 shadow-sm sm:p-8 lg:col-span-3'
+            }
+          >
             {sent ? (
               <div className="flex min-h-[26rem] flex-col items-center justify-center text-center">
                 <span className="grid h-16 w-16 place-items-center rounded-2xl bg-forest-100 text-forest-800">
@@ -353,6 +368,7 @@ export default function Contact() {
           </Reveal>
 
           {/* ── DETAILS + MAP ────────────────────────────────────────────── */}
+          {!sent && (
           <Reveal delay={120} className="space-y-6 lg:col-span-2">
             <div className="rounded-3xl border border-forest-100 bg-white p-7 shadow-sm">
               <h2 className="font-display text-lg font-semibold text-forest-900">Head Office</h2>
@@ -398,6 +414,7 @@ export default function Contact() {
               />
             </div>
           </Reveal>
+          )}
         </div>
       </Section>
     </>

@@ -157,7 +157,8 @@ export type NotificationType =
   | 'ACCOUNT_CLOSED'
   | 'CLIENT_PORTAL_INVITED'
   | 'SITE_VISIT_STARTED'
-  | 'SITE_VISIT_ARRIVED';
+  | 'SITE_VISIT_ARRIVED'
+  | 'LEAD_DUPLICATE_ATTEMPT';
 
 /* -------------------------------------------------------------------------- */
 /* Row shapes                                                                  */
