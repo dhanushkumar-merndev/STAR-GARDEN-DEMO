@@ -44,7 +44,7 @@ import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
 import { formatDateTime, humanizeEnum } from '@/lib/utils/format';
 import { formatMobile, maskMobile, telHref } from '@/lib/utils/phone';
 import type { CallOutcome } from '@/types/database';
-import { MobileSheet } from '@/components/ui/mobile-sheet';
+import { DetailDrawer } from '@/components/ui/detail-drawer';
 
 export const metadata: Metadata = { title: 'Lead' };
 
@@ -219,7 +219,7 @@ export default async function LeadDetailPage({
               <p className="mt-0.5 text-sm text-ink-muted">{lead.lead_code}</p>
             </div>
             <div className="flex items-center gap-2">
-              <MobileSheet label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
+              <DetailDrawer label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
                 <dl className="space-y-3 text-sm">
                   <CustomerDetail label="Customer" value={lead.customer_name} />
                   <CustomerDetail label="Mobile" value={displayMobile} href={revealedTelHref} />
@@ -228,7 +228,7 @@ export default async function LeadDetailPage({
                   <CustomerDetail label="Location" value={lead.site_address ?? lead.location_text ?? 'Not provided'} />
                   <CustomerDetail label="Requirement" value={lead.requirement_summary ?? 'Not provided'} multiline />
                 </dl>
-              </MobileSheet>
+              </DetailDrawer>
               <LeadStatusBadge value={lead.status} />
             </div>
           </div>

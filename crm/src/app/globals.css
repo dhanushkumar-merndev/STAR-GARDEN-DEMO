@@ -138,14 +138,6 @@
     outline-offset: 2px;
   }
 
-  /* The authenticated CRM uses a larger desktop scale without CSS `zoom`,
-     which otherwise breaks sticky positioning and clips the sidebar. */
-  @media (min-width: 1280px) {
-    :root:has(.crm-shell) {
-      font-size: 133.333%;
-    }
-  }
-
   /* Respect the OS setting; the CRM has no animation that carries meaning. */
   @media (prefers-reduced-motion: reduce) {
     *,

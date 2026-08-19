@@ -5,7 +5,7 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listFollowUps, type FollowUpScope } from '@/server/services/follow-ups';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, FollowUpStatusBadge } from '@/components/status';
-import { WeeklyFollowUpCalendar } from '@/components/follow-ups/weekly-calendar';
+import { FollowUpCalendar, type CalendarView } from '@/components/follow-ups/weekly-calendar';
 import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Follow-ups' };
@@ -28,10 +28,13 @@ export default async function FollowUpsPage({
   const user = await requirePageRole('ADMIN', 'BDM');
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'OVERDUE') as FollowUpScope;
+  const view: CalendarView = params.view === 'month' ? 'month' : 'week';
 
   const [items, calendarItems] = await Promise.all([
     listFollowUps(user, { scope, limit: 100 }),
-    listFollowUps(user, { scope: 'ALL', limit: 100 }),
+    // A month spans roughly four times the rows a week does, so the week's
+    // limit would silently truncate the grid.
+    listFollowUps(user, { scope: 'ALL', limit: view === 'month' ? 400 : 100 }),
   ]);
 
   return (
@@ -47,7 +50,9 @@ export default async function FollowUpsPage({
           return (
             <Link
               key={option.value}
-              href={`/follow-ups?scope=${option.value}`}
+              // Carries the calendar view, so switching scope does not silently
+              // drop the reader back to the week grid (§16).
+              href={`/follow-ups?scope=${option.value}&view=${view}`}
               aria-current={active ? 'page' : undefined}
               className={
                 active
@@ -61,7 +66,7 @@ export default async function FollowUpsPage({
         })}
       </nav>
 
-      <WeeklyFollowUpCalendar items={calendarItems} />
+      <FollowUpCalendar items={calendarItems} view={view} scope={scope} />
 
       <Card>
         {items.length === 0 ? (
@@ -111,7 +116,10 @@ export default async function FollowUpsPage({
                     <div className="mt-2 flex flex-wrap gap-2">
                       {followUp.lead ? (
                         <Link
-                          href={`/leads/${followUp.lead_id}`}
+                          // Opens on the lead's follow-up list rather than its
+                          // default tab. Call Customer sits in the lead header,
+                          // above the tabs, so it stays one tap away either way.
+                          href={`/leads/${followUp.lead_id}?tab=follow-ups`}
                           className="tap inline-flex items-center rounded-lg border border-line px-3 text-sm font-medium text-brand-700"
                         >
                           Open lead to call customer

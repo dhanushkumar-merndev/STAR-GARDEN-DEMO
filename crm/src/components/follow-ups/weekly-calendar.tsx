@@ -1,70 +1,181 @@
 import Link from 'next/link';
-import { addDays, format, isSameDay, startOfWeek } from 'date-fns';
-import { LuCalendarDays } from 'react-icons/lu';
+import {
+  addDays,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
 import { Card, CardBody, CardHeader } from '@/components/ui';
 import type { FollowUpWithLead } from '@/server/services/follow-ups';
 
-const MAX_ITEMS_PER_DAY = 3;
+export type CalendarView = 'week' | 'month';
 
-/** A bounded weekly overview: never renders more than three cards per day. */
-export function WeeklyFollowUpCalendar({ items }: { items: FollowUpWithLead[] }) {
+/** A month cell is a seventh of the width, so it shows fewer before collapsing to a count. */
+const MAX_ITEMS_PER_DAY: Record<CalendarView, number> = { week: 3, month: 2 };
+
+/**
+ * Follow-up overview, by week or by month.
+ *
+ * The view lives in the URL rather than in component state: this is a Server
+ * Component reading rows the server already fetched, so a client-side toggle
+ * would mean shipping the whole month's follow-ups to the browser just to hide
+ * six sevenths of them. It also makes a particular view linkable and keeps it
+ * across a back/forward navigation (§16 "preserve filters").
+ */
+export function FollowUpCalendar({
+  items,
+  view,
+  scope,
+}: {
+  items: FollowUpWithLead[];
+  view: CalendarView;
+  scope: string;
+}) {
   const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-  const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const isMonth = view === 'month';
+
+  // Both views start on a Monday, so the weekday columns line up between them.
+  const start = isMonth
+    ? startOfWeek(startOfMonth(today), { weekStartsOn: 1 })
+    : startOfWeek(today, { weekStartsOn: 1 });
+  const end = isMonth ? endOfWeek(endOfMonth(today), { weekStartsOn: 1 }) : addDays(start, 6);
+
+  const days = eachDayOfInterval({ start, end });
   const scheduled = items.filter((item) => item.status === 'OPEN' || item.status === 'OVERDUE');
+  const limit = MAX_ITEMS_PER_DAY[view];
 
   return (
     <Card className="mb-4">
       <CardHeader
-        title="This week"
-        description="Up to 3 follow-ups per day"
-        action={<LuCalendarDays className="size-5 text-brand-700" aria-hidden="true" />}
+        title={isMonth ? format(today, 'MMMM yyyy') : 'This week'}
+        description={`Up to ${limit} follow-ups per day`}
+        action={<ViewToggle view={view} scope={scope} />}
       />
       <CardBody className="p-3 sm:p-4">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
-          {days.map((day) => {
-            const dayItems = scheduled.filter((item) => isSameDay(new Date(item.due_at), day));
-            const visibleItems = dayItems.slice(0, MAX_ITEMS_PER_DAY);
-            const moreCount = dayItems.length - visibleItems.length;
-            const isToday = isSameDay(day, today);
+        {/* The month grid is always 7 columns — a calendar that reflows to two
+            columns is no longer a calendar. It scrolls sideways on a phone
+            instead, which keeps the weekday alignment that gives it meaning. */}
+        <div className={isMonth ? '-mx-1 overflow-x-auto px-1' : ''}>
+          <div
+            className={
+              isMonth
+                ? 'grid min-w-[44rem] grid-cols-7 gap-1.5'
+                : 'grid gap-2 sm:grid-cols-2 xl:grid-cols-7'
+            }
+          >
+            {isMonth
+              ? days.slice(0, 7).map((day) => (
+                  <p
+                    key={`heading-${day.toISOString()}`}
+                    className="px-1 text-[11px] font-semibold tracking-wide text-ink-muted uppercase"
+                  >
+                    {format(day, 'EEE')}
+                  </p>
+                ))
+              : null}
 
-            return (
-              <section
-                key={day.toISOString()}
-                className={
-                  isToday
-                    ? 'min-h-32 rounded-lg border border-brand-300 bg-brand-50 p-2'
-                    : 'min-h-32 rounded-lg border border-line bg-surface p-2'
-                }
-              >
-                <p className="text-xs font-semibold text-ink">{format(day, 'EEE')}</p>
-                <p className="text-xs text-ink-muted">{format(day, 'd MMM')}</p>
+            {days.map((day) => {
+              const dayItems = scheduled.filter((item) => isSameDay(new Date(item.due_at), day));
+              const visibleItems = dayItems.slice(0, limit);
+              const moreCount = dayItems.length - visibleItems.length;
+              const isToday = isSameDay(day, today);
+              // Leading/trailing days from the neighbouring month keep the grid
+              // rectangular, but must not read as part of this month's workload.
+              const isOutsideMonth = isMonth && !isSameMonth(day, today);
 
-                <div className="mt-2 space-y-1.5">
-                  {visibleItems.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={`/leads/${item.lead_id}`}
-                      className={
-                        item.status === 'OVERDUE'
-                          ? 'block rounded-md border border-danger/25 bg-danger-bg px-2 py-1.5 text-xs hover:brightness-95'
-                          : 'block rounded-md bg-surface-muted px-2 py-1.5 text-xs hover:bg-brand-50'
-                      }
-                    >
-                      <span className="block truncate font-medium text-ink">{format(new Date(item.due_at), 'h:mm a')}</span>
-                      <span className="block truncate text-ink-muted">{item.lead?.customer_name ?? item.title}</span>
-                    </Link>
-                  ))}
-                  {moreCount > 0 ? (
-                    <p className="px-1 text-xs font-medium text-brand-700">+{moreCount} more</p>
-                  ) : null}
-                  {dayItems.length === 0 ? <p className="pt-2 text-xs text-ink-subtle">No follow-ups</p> : null}
-                </div>
-              </section>
-            );
-          })}
+              return (
+                <section
+                  key={day.toISOString()}
+                  className={[
+                    'rounded-lg border p-2',
+                    isMonth ? 'min-h-24' : 'min-h-32',
+                    isToday ? 'border-brand-300 bg-brand-50' : 'border-line bg-surface',
+                    isOutsideMonth && !isToday ? 'opacity-45' : '',
+                  ].join(' ')}
+                >
+                  {isMonth ? (
+                    <p className="text-xs font-semibold text-ink">{format(day, 'd')}</p>
+                  ) : (
+                    <>
+                      <p className="text-xs font-semibold text-ink">{format(day, 'EEE')}</p>
+                      <p className="text-xs text-ink-muted">{format(day, 'd MMM')}</p>
+                    </>
+                  )}
+
+                  <div className="mt-2 space-y-1.5">
+                    {visibleItems.map((item) => (
+                      <Link
+                        key={item.id}
+                        // Straight to the lead's follow-up list, not the lead's
+                        // default tab: this card *is* a follow-up, so that is
+                        // the section the click was about.
+                        href={`/leads/${item.lead_id}?tab=follow-ups`}
+                        className={
+                          item.status === 'OVERDUE'
+                            ? 'block rounded-md border border-danger/25 bg-danger-bg px-2 py-1.5 text-xs hover:brightness-95'
+                            : 'block rounded-md bg-surface-muted px-2 py-1.5 text-xs hover:bg-brand-50'
+                        }
+                      >
+                        <span className="block truncate font-medium text-ink">
+                          {format(new Date(item.due_at), 'h:mm a')}
+                        </span>
+                        <span className="block truncate text-ink-muted">
+                          {item.lead?.customer_name ?? item.title}
+                        </span>
+                      </Link>
+                    ))}
+                    {moreCount > 0 ? (
+                      <p className="px-1 text-xs font-medium text-brand-700">+{moreCount} more</p>
+                    ) : null}
+                    {dayItems.length === 0 && !isMonth ? (
+                      <p className="pt-2 text-xs text-ink-subtle">No follow-ups</p>
+                    ) : null}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </div>
       </CardBody>
     </Card>
+  );
+}
+
+/** Week/month switch. Plain links, so it works before hydration. */
+function ViewToggle({ view, scope }: { view: CalendarView; scope: string }) {
+  const options: { value: CalendarView; label: string }[] = [
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+  ];
+
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-lg border border-line bg-surface-muted p-0.5"
+      role="group"
+      aria-label="Calendar view"
+    >
+      {options.map((option) => {
+        const active = option.value === view;
+        return (
+          <Link
+            key={option.value}
+            href={`/follow-ups?scope=${scope}&view=${option.value}`}
+            aria-current={active ? 'true' : undefined}
+            className={
+              active
+                ? 'rounded-md bg-surface px-2.5 py-1 text-xs font-semibold text-ink shadow-sm'
+                : 'rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-ink'
+            }
+          >
+            {option.label}
+          </Link>
+        );
+      })}
+    </div>
   );
 }
