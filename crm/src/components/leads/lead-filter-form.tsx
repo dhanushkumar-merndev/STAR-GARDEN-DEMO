@@ -10,16 +10,29 @@ type Person = { id: string; full_name: string };
 
 const STATUS_FILTERS: { value: LeadStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'All statuses' },
-  { value: 'UNASSIGNED', label: 'Unassigned' },
+  // Labelled for the desk, not for the schema: the status is still UNASSIGNED
+  // in the database (and still badges as "Unassigned" on the lead itself) —
+  // this list just calls it what the team calls it.
+  { value: 'UNASSIGNED', label: 'New leads' },
   { value: 'ASSIGNED', label: 'Assigned' },
   { value: 'CONTACTED', label: 'Contacted' },
   { value: 'FOLLOW_UP', label: 'Follow-up' },
-  { value: 'SITE_VISIT_SCHEDULED', label: 'Visit scheduled' },
-  { value: 'SITE_VISIT_COMPLETED', label: 'Visit completed' },
   { value: 'QUALIFIED', label: 'Qualified' },
   { value: 'LOST', label: 'Lost' },
   { value: 'CLOSED', label: 'Closed' },
 ];
+
+/**
+ * Where the list starts with no query string.
+ *
+ * Admins open onto the work that needs them — leads nobody owns yet. A BDM
+ * cannot: their list is already scoped to leads assigned to *them*, and an
+ * assigned lead is by definition never UNASSIGNED, so the same default would
+ * hand them a permanently empty page.
+ */
+export function defaultStatusFilter(isAdmin: boolean): LeadStatus | 'ALL' {
+  return isAdmin ? 'UNASSIGNED' : 'ALL';
+}
 
 /**
  * Radix Select is intentionally not left to native form serialization here.
@@ -52,7 +65,10 @@ export function LeadFilterForm({
     event.preventDefault();
     const query = new URLSearchParams();
     if (q.trim()) query.set('q', q.trim());
-    if (status !== 'ALL') query.set('status', status);
+    // Always carried, unlike the other filters: an absent status means "use the
+    // default", which is not ALL for an Admin. Omitting it when ALL is chosen
+    // would quietly bounce them back to New leads.
+    query.set('status', status);
     if (source !== 'ALL') query.set('source', source);
     if (isAdmin) {
       if (assignedTo !== 'ALL') query.set('assignedTo', assignedTo);
@@ -66,7 +82,9 @@ export function LeadFilterForm({
 
   function clear() {
     setQ('');
-    setStatus('ALL');
+    // Clearing returns the list to how it opens, which is not the same as
+    // selecting every status.
+    setStatus(defaultStatusFilter(isAdmin));
     setSource('ALL');
     setAssignedTo('ALL');
     setScope('MINE');

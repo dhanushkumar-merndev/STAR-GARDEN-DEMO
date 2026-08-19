@@ -7,7 +7,7 @@ import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
 import { maskMobile } from '@/lib/utils/phone';
 import type { LeadStatus } from '@/types/database';
-import { LeadFilterForm } from '@/components/leads/lead-filter-form';
+import { LeadFilterForm, defaultStatusFilter } from '@/components/leads/lead-filter-form';
 import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Leads' };
@@ -36,7 +36,7 @@ export default async function LeadsPage({
 
   const filters: LeadListFilters = {
     search: read('q'),
-    status: (read('status') as LeadStatus | 'ALL') ?? 'ALL',
+    status: (read('status') as LeadStatus | 'ALL') ?? defaultStatusFilter(user.isAdmin),
     source: read('source') ?? 'ALL',
     assignedTo: read('assignedTo') ?? 'ALL',
     scope: (read('scope') as LeadListFilters['scope']) ?? (user.isAdmin ? 'ALL' : 'MINE'),
