@@ -7,7 +7,8 @@ import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
 import { maskMobile } from '@/lib/utils/phone';
 import type { LeadStatus } from '@/types/database';
-import { LeadFilterForm, defaultStatusFilter } from '@/components/leads/lead-filter-form';
+import { LeadFilterForm } from '@/components/leads/lead-filter-form';
+import { defaultStatusFilter } from '@/components/leads/helpers';
 import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Leads' };

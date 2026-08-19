@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { LuSearch } from 'react-icons/lu';
 import { Button, Input, Select } from '@/components/ui';
+import { defaultStatusFilter } from '@/components/leads/helpers';
 import type { LeadStatus } from '@/types/database';
 
 type Person = { id: string; full_name: string };
@@ -22,17 +23,6 @@ const STATUS_FILTERS: { value: LeadStatus | 'ALL'; label: string }[] = [
   { value: 'CLOSED', label: 'Closed' },
 ];
 
-/**
- * Where the list starts with no query string.
- *
- * Admins open onto the work that needs them — leads nobody owns yet. A BDM
- * cannot: their list is already scoped to leads assigned to *them*, and an
- * assigned lead is by definition never UNASSIGNED, so the same default would
- * hand them a permanently empty page.
- */
-export function defaultStatusFilter(isAdmin: boolean): LeadStatus | 'ALL' {
-  return isAdmin ? 'UNASSIGNED' : 'ALL';
-}
 
 /**
  * Radix Select is intentionally not left to native form serialization here.
