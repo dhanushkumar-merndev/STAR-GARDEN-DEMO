@@ -144,8 +144,8 @@ export default async function LeadDetailPage({
   const latestOutcomeActivity = activities.find((activity) => activity.type === 'CALL_OUTCOME');
   const hasPendingCallAttempt = Boolean(
     latestOwnAttempt &&
-      (!latestOutcomeActivity ||
-        new Date(latestOwnAttempt.activity_at) > new Date(latestOutcomeActivity.activity_at)),
+    (!latestOutcomeActivity ||
+      new Date(latestOwnAttempt.activity_at) > new Date(latestOutcomeActivity.activity_at)),
   );
   const displayMobile = hasCallHistory
     ? formatMobile(lead.mobile_country_code, lead.mobile_normalized)
@@ -155,14 +155,14 @@ export default async function LeadDetailPage({
     : undefined;
   const whatsappUrl = hasCallHistory
     ? whatsappChatUrl({
-        countryCode: lead.mobile_country_code,
-        nationalNumber: lead.mobile_normalized,
-        message: renderWhatsappMessage(business.whatsappTemplate, {
-          customerName: lead.customer_name,
-          businessName: business.name,
-          leadCode: lead.lead_code,
-        }),
-      })
+      countryCode: lead.mobile_country_code,
+      nationalNumber: lead.mobile_normalized,
+      message: renderWhatsappMessage(business.whatsappTemplate, {
+        customerName: lead.customer_name,
+        businessName: business.name,
+        leadCode: lead.lead_code,
+      }),
+    })
     : null;
   // The *current* call decision controls whether a new phase can begin. A
   // much older Interested outcome must not keep the delivery tabs open after
@@ -306,10 +306,10 @@ export default async function LeadDetailPage({
             tab.id === 'customer-access'
               ? 'Record Interested after a call to unlock customer access.'
               : tab.id === 'visits'
-              ? 'Record Interested after a call to unlock site visits.'
-              : tab.id === 'design'
-                ? 'Complete a site visit to unlock landscape design.'
-                : 'Approve a landscape design to unlock execution.';
+                ? 'Record Interested after a call to unlock site visits.'
+                : tab.id === 'design'
+                  ? 'Complete a site visit to unlock landscape design.'
+                  : 'Approve a landscape design to unlock execution.';
 
           if (locked) {
             return (
@@ -329,11 +329,10 @@ export default async function LeadDetailPage({
               key={tab.id}
               href={`/leads/${lead.id}?tab=${tab.id}`}
               aria-current={selected ? 'page' : undefined}
-              className={`flex shrink-0 snap-start items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                selected
+              className={`flex shrink-0 snap-start items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${selected
                   ? 'bg-brand-600 text-white'
                   : 'border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink'
-              }`}
+                }`}
             >
               <span>{tab.label}</span>
               {needsAttention ? (
@@ -349,103 +348,103 @@ export default async function LeadDetailPage({
 
       {/* Contact and requirement */}
       {activeTab === 'details' ? <>
-      <Card className="hidden lg:block">
-        <CardHeader
-          title="Contact and requirement"
-          action={
-            writable ? (
-              <Link href={`/leads/${lead.id}/edit`}>
-                <Button size="sm" variant="ghost">
-                  Edit
-                </Button>
-              </Link>
-            ) : null
-          }
-        />
-        <CardBody className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
-              <LuPhone className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-ink-muted">Mobile</p>
-              {revealedTelHref ? (
-                <a href={revealedTelHref} className="block truncate text-sm font-semibold text-brand-700 hover:underline">
-                  {displayMobile}
-                </a>
-              ) : (
-                <p className="block truncate text-sm font-semibold text-ink">{displayMobile}</p>
-              )}
-            </div>
-          </div>
-          {lead.email ? (
-            <div className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
-                <LuMail className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-ink-muted">Email</p>
-                <a href={`mailto:${lead.email}`} className="block truncate text-sm font-medium text-brand-700 hover:underline">
-                  {lead.email}
-                </a>
-              </div>
-            </div>
-          ) : null}
-          {lead.location_text || lead.site_address ? (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.site_address ?? lead.location_text ?? '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Open ${lead.site_address ?? lead.location_text} in Google Maps`}
-              className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5 transition-colors hover:border-brand-300 hover:bg-brand-50"
-            >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
-                <LuMapPin className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-ink-muted">Site location</p>
-                <p className="truncate text-sm font-medium text-brand-700 underline-offset-2 hover:underline">{lead.site_address ?? lead.location_text}</p>
-              </div>
-            </a>
-          ) : null}
-          </div>
-          {lead.requirement_summary ? (
-            <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
-              <div className="flex items-center gap-2 text-brand-800">
-                <LuClipboardList className="size-4" />
-                <p className="text-xs font-semibold uppercase tracking-wide">Requirement</p>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink">{lead.requirement_summary}</p>
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
-
-      {/* The decision, before the toolbox. After a call this is the only thing
-          the Admin needs, and burying it among eight secondary buttons is what
-          makes leads go quiet. */}
-      {showDisposition ? (
-        <Card>
+        <Card className="hidden lg:block">
           <CardHeader
-            title="After the call"
-            description="Record what the customer said — this drives what happens next."
+            title="Contact and requirement"
+            action={
+              writable ? (
+                <Link href={`/leads/${lead.id}/edit`}>
+                  <Button size="sm" variant="ghost">
+                    Edit
+                  </Button>
+                </Link>
+              ) : null
+            }
           />
-          <CardBody>
-            <DispositionButtons
-              leadId={lead.id}
-              customerName={lead.customer_name}
-              lostReasons={lossReasons}
-              selectedOutcome={latestCallOutcome ?? null}
-              readOnly={isTerminalLead}
-              allowReopen={lead.status === 'LOST' && user.isAdmin}
-              callAttemptRequired={!hasPendingCallAttempt}
-              designers={designers}
-              defaultAddress={lead.site_address ?? lead.location_text}
-            />
+          <CardBody className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+                  <LuPhone className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-ink-muted">Mobile</p>
+                  {revealedTelHref ? (
+                    <a href={revealedTelHref} className="block truncate text-sm font-semibold text-brand-700 hover:underline">
+                      {displayMobile}
+                    </a>
+                  ) : (
+                    <p className="block truncate text-sm font-semibold text-ink">{displayMobile}</p>
+                  )}
+                </div>
+              </div>
+              {lead.email ? (
+                <div className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+                    <LuMail className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-ink-muted">Email</p>
+                    <a href={`mailto:${lead.email}`} className="block truncate text-sm font-medium text-brand-700 hover:underline">
+                      {lead.email}
+                    </a>
+                  </div>
+                </div>
+              ) : null}
+              {lead.location_text || lead.site_address ? (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.site_address ?? lead.location_text ?? '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${lead.site_address ?? lead.location_text} in Google Maps`}
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5 transition-colors hover:border-brand-300 hover:bg-brand-50"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+                    <LuMapPin className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-ink-muted">Site location</p>
+                    <p className="truncate text-sm font-medium text-brand-700 underline-offset-2 hover:underline">{lead.site_address ?? lead.location_text}</p>
+                  </div>
+                </a>
+              ) : null}
+            </div>
+            {lead.requirement_summary ? (
+              <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+                <div className="flex items-center gap-2 text-brand-800">
+                  <LuClipboardList className="size-4" />
+                  <p className="text-xs font-semibold uppercase tracking-wide">Requirement</p>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink">{lead.requirement_summary}</p>
+              </div>
+            ) : null}
           </CardBody>
         </Card>
-      ) : null}
+
+        {/* The decision, before the toolbox. After a call this is the only thing
+          the Admin needs, and burying it among eight secondary buttons is what
+          makes leads go quiet. */}
+        {showDisposition ? (
+          <Card>
+            <CardHeader
+              title="After the call"
+              description="Record what the customer said — this drives what happens next."
+            />
+            <CardBody>
+              <DispositionButtons
+                leadId={lead.id}
+                customerName={lead.customer_name}
+                lostReasons={lossReasons}
+                selectedOutcome={latestCallOutcome ?? null}
+                readOnly={isTerminalLead}
+                allowReopen={lead.status === 'LOST' && user.isAdmin}
+                callAttemptRequired={!hasPendingCallAttempt}
+                designers={designers}
+                defaultAddress={lead.site_address ?? lead.location_text}
+              />
+            </CardBody>
+          </Card>
+        ) : null}
 
       </> : null}
 
@@ -525,100 +524,100 @@ export default async function LeadDetailPage({
 
       {/* Site visits */}
       {activeTab === 'visits' ? <>
-      {/* Only explain the gate when there is nothing to look at. Once visits
+        {/* Only explain the gate when there is nothing to look at. Once visits
           exist they stay readable, and telling someone their visits are
           "locked" while listing them below is just confusing. */}
-      {isTerminalLead ? (
-        <Alert tone="neutral" title="This lead is no longer active">
-          {siteVisits.length > 0
-            ? `Visit history is kept for the record. No new visit can be scheduled while the lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`
-            : `Site visits cannot be started after a lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`}
-        </Alert>
-      ) : !hasInterest && siteVisits.length === 0 ? (
-        <Alert tone="neutral" title="Site visits are locked">
-          Record the customer as Interested after a call to schedule the site visit.
-        </Alert>
-      ) : !hasInterest ? (
-        <Alert tone="neutral" title="No new visit can be scheduled yet">
-          The visits below stay available to read. Record a fresh Interested outcome to schedule
-          another one.
-        </Alert>
-      ) : null}
-      <Card>
-        <CardHeader title="Site details" description="Customer location and requirement" />
-        <CardBody className="space-y-3 text-sm">
-          {lead.site_address || lead.location_text ? (
-            <p className="flex items-start gap-2">
-              <LuMapPin className="mt-0.5 size-4 shrink-0 text-ink-subtle" />
-              <span>{lead.site_address ?? lead.location_text}</span>
-            </p>
-          ) : (
-            <p className="text-ink-muted">No site address has been added yet.</p>
-          )}
-          {lead.requirement_summary ? (
-            <div className="rounded-lg bg-surface-muted p-3">
-              <p className="text-xs font-medium text-ink-muted">Requirement</p>
-              <p className="mt-1 whitespace-pre-wrap">{lead.requirement_summary}</p>
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
+        {isTerminalLead ? (
+          <Alert tone="neutral" title="This lead is no longer active">
+            {siteVisits.length > 0
+              ? `Visit history is kept for the record. No new visit can be scheduled while the lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`
+              : `Site visits cannot be started after a lead is marked ${lead.status === 'LOST' ? 'Not interested' : 'Closed'}.`}
+          </Alert>
+        ) : !hasInterest && siteVisits.length === 0 ? (
+          <Alert tone="neutral" title="Site visits are locked">
+            Record the customer as Interested after a call to schedule the site visit.
+          </Alert>
+        ) : !hasInterest ? (
+          <Alert tone="neutral" title="No new visit can be scheduled yet">
+            The visits below stay available to read. Record a fresh Interested outcome to schedule
+            another one.
+          </Alert>
+        ) : null}
+        <Card>
+          <CardHeader title="Site details" description="Customer location and requirement" />
+          <CardBody className="space-y-3 text-sm">
+            {lead.site_address || lead.location_text ? (
+              <p className="flex items-start gap-2">
+                <LuMapPin className="mt-0.5 size-4 shrink-0 text-ink-subtle" />
+                <span>{lead.site_address ?? lead.location_text}</span>
+              </p>
+            ) : (
+              <p className="text-ink-muted">No site address has been added yet.</p>
+            )}
+            {lead.requirement_summary ? (
+              <div className="rounded-lg bg-surface-muted p-3">
+                <p className="text-xs font-medium text-ink-muted">Requirement</p>
+                <p className="mt-1 whitespace-pre-wrap">{lead.requirement_summary}</p>
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
 
-      <Card>
-        <CardHeader
-          title="Site visits"
-          description={siteVisits.length ? `${siteVisits.length} visit${siteVisits.length === 1 ? '' : 's'} for this lead. Earlier visits stay in the history.` : undefined}
-          action={
-            writable && canStartSiteVisit ? (
-              <ScheduleVisitDialog
-                leadId={lead.id}
-                designers={designers}
-                defaultAddress={lead.site_address ?? lead.location_text}
-                triggerLabel={siteVisits.length > 0 ? 'Schedule re-visit' : 'Schedule visit'}
-              />
-            ) : null
-          }
-        />
-        <CardBody className="p-0">
-          {siteVisits.length === 0 ? (
-            <EmptyState title="No visits scheduled" />
-          ) : (
-            <ul className="divide-y divide-line">
-              {siteVisits.map((visit, index) => {
-                const visitNumber = siteVisits.length - index;
-                const visitLabel = visitNumber === 1 ? 'Visit 1' : `Re-visit ${visitNumber - 1}`;
-                return (
-                <li key={visit.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
-                  <Link
-                    href={`/site-visits/${visit.id}`}
-                    className="flex min-w-0 flex-1 items-center gap-3 hover:text-brand-700"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-ink">
-                        <span>{visitLabel}</span>
-                        <span className="text-ink-muted">{formatDateTime(visit.scheduled_start_at)}</span>
-                      </p>
-                      <p className="truncate text-xs text-ink-muted">{visit.address ?? 'No address'}</p>
-                    </div>
-                    <SiteVisitStatusBadge value={visit.status} />
-                  </Link>
-                  {user.isAdmin ? (
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      {visit.status === 'IN_PROGRESS' ? (
-                        <CompleteVisitDialog siteVisitId={visit.id} triggerLabel="Approve visit" />
+        <Card>
+          <CardHeader
+            title="Site visits"
+            description={siteVisits.length ? `${siteVisits.length} visit${siteVisits.length === 1 ? '' : 's'} for this lead. Earlier visits stay in the history.` : undefined}
+            action={
+              writable && canStartSiteVisit ? (
+                <ScheduleVisitDialog
+                  leadId={lead.id}
+                  designers={designers}
+                  defaultAddress={lead.site_address ?? lead.location_text}
+                  triggerLabel={siteVisits.length > 0 ? 'Schedule re-visit' : 'Schedule visit'}
+                />
+              ) : null
+            }
+          />
+          <CardBody className="p-0">
+            {siteVisits.length === 0 ? (
+              <EmptyState title="No visits scheduled" />
+            ) : (
+              <ul className="divide-y divide-line">
+                {siteVisits.map((visit, index) => {
+                  const visitNumber = siteVisits.length - index;
+                  const visitLabel = visitNumber === 1 ? 'Visit 1' : `Re-visit ${visitNumber - 1}`;
+                  return (
+                    <li key={visit.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
+                      <Link
+                        href={`/site-visits/${visit.id}`}
+                        className="flex min-w-0 flex-1 items-center gap-3 hover:text-brand-700"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-ink">
+                            <span>{visitLabel}</span>
+                            <span className="text-ink-muted">{formatDateTime(visit.scheduled_start_at)}</span>
+                          </p>
+                          <p className="truncate text-xs text-ink-muted">{visit.address ?? 'No address'}</p>
+                        </div>
+                        <SiteVisitStatusBadge value={visit.status} />
+                      </Link>
+                      {user.isAdmin ? (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {visit.status === 'IN_PROGRESS' ? (
+                            <CompleteVisitDialog siteVisitId={visit.id} triggerLabel="Approve visit" />
+                          ) : null}
+                          {visit.status === 'SCHEDULED' || visit.status === 'RESCHEDULED' ? (
+                            <RescheduleVisitDialog siteVisitId={visit.id} />
+                          ) : null}
+                        </div>
                       ) : null}
-                      {visit.status === 'SCHEDULED' || visit.status === 'RESCHEDULED' ? (
-                        <RescheduleVisitDialog siteVisitId={visit.id} />
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              );
-              })}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
       </> : null}
 
       {/* Design */}
