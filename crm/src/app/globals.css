@@ -138,6 +138,17 @@
     outline-offset: 2px;
   }
 
+  /* Tightens the authenticated CRM on a wide screen so more of a lead fits
+     above the fold. Scaling the root font rather than CSS `zoom`, which breaks
+     sticky positioning and clips the sidebar. Desktop only: the phone layout
+     is already sized for its screen, and shrinking form controls below 16px
+     there makes iOS Safari zoom on focus. */
+  @media (min-width: 1280px) {
+    :root:has(.crm-shell) {
+      font-size: 90%;
+    }
+  }
+
   /* Respect the OS setting; the CRM has no animation that carries meaning. */
   @media (prefers-reduced-motion: reduce) {
     *,
