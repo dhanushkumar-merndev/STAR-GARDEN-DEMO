@@ -14,6 +14,12 @@ const securityHeaders = [
     key: 'Strict-Transport-Security',
     value: 'max-age=63072000; includeSubDomains; preload',
   },
+  // Every page here is either authenticated or session-dependent, so none of
+  // them should be cached — by an intermediary, or by the browser's own
+  // back-forward cache. Without this, signing out doesn't stop the previous
+  // page from reappearing instantly (from bfcache) on a Back-button press,
+  // even though the session backing it is already gone (§15).
+  { key: 'Cache-Control', value: 'no-store' },
 ];
 
 const nextConfig: NextConfig = {
@@ -37,7 +43,16 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      {
+        // Excludes hashed static assets (JS/CSS chunks, images, fonts) — those
+        // are immutable per build and should keep Next's own long-lived cache,
+        // unlike every actual page/route, which is session-dependent. Same
+        // pattern as the proxy's own matcher in src/proxy.ts.
+        source: '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|webmanifest)$).*)',
+        headers: securityHeaders,
+      },
+    ];
   },
 };
 

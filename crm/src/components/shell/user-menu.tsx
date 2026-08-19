@@ -72,17 +72,23 @@ export function UserMenu({ fullName, email, roleLabel, avatarUrl }: UserMenuProp
 
             <DropdownMenu.Separator className="my-1 h-px bg-line" />
 
-            <form action={signOutAction}>
-              <DropdownMenu.Item asChild>
-                <button
-                  type="submit"
-                  className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-danger outline-none data-highlighted:bg-[--color-danger-bg]"
-                >
-                  <LuLogOut className="size-4" />
-                  Sign out
-                </button>
-              </DropdownMenu.Item>
-            </form>
+            {/*
+              Not a <form action> — Radix closes and unmounts this item the
+              instant it's selected, which races the form's native submission
+              and can rip it out of the DOM mid-flight ("Form submission
+              canceled because the form is not connected"), silently dropping
+              the sign-out. signOutAction takes no arguments specifically so
+              it can be called directly here instead, which has no such race.
+            */}
+            <DropdownMenu.Item
+              onSelect={() => {
+                void signOutAction();
+              }}
+              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-danger outline-none data-highlighted:bg-[--color-danger-bg]"
+            >
+              <LuLogOut className="size-4" />
+              Sign out
+            </DropdownMenu.Item>
           </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
