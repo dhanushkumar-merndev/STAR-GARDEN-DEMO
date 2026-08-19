@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { LuChevronDown, LuLogOut, LuUserRound } from 'react-icons/lu';
@@ -27,6 +28,8 @@ export interface UserMenuProps {
 }
 
 export function UserMenu({ fullName, email, roleLabel, avatarUrl }: UserMenuProps) {
+  const [pending, startTransition] = React.useTransition();
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
@@ -73,21 +76,27 @@ export function UserMenu({ fullName, email, roleLabel, avatarUrl }: UserMenuProp
             <DropdownMenu.Separator className="my-1 h-px bg-line" />
 
             {/*
-              Not a <form action> — Radix closes and unmounts this item the
-              instant it's selected, which races the form's native submission
-              and can rip it out of the DOM mid-flight ("Form submission
-              canceled because the form is not connected"), silently dropping
-              the sign-out. signOutAction takes no arguments specifically so
-              it can be called directly here instead, which has no such race.
+              Sign-out must survive this menu closing, which is why it is
+              neither a <form action> nor a bare onSelect call. Radix dismisses
+              (and unmounts) the item the instant it is selected: a form gets
+              torn out of the DOM mid-submit — the browser then cancels it
+              outright, so the request never leaves the page — and a plain
+              call leaves nothing mounted for React to apply the action's
+              redirect to. `preventDefault()` keeps the menu open, and the
+              transition keeps this subtree alive until the redirect lands.
             */}
             <DropdownMenu.Item
-              onSelect={() => {
-                void signOutAction();
+              disabled={pending}
+              onSelect={(event) => {
+                event.preventDefault();
+                startTransition(async () => {
+                  await signOutAction();
+                });
               }}
-              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-danger outline-none data-highlighted:bg-[--color-danger-bg]"
+              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-danger outline-none data-disabled:opacity-60 data-highlighted:bg-[--color-danger-bg]"
             >
               <LuLogOut className="size-4" />
-              Sign out
+              {pending ? 'Signing out…' : 'Sign out'}
             </DropdownMenu.Item>
           </div>
         </DropdownMenu.Content>
