@@ -82,7 +82,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
         {/* pb-20 keeps the last row clear of the fixed mobile nav bar. */}
         <main className="min-w-0 flex-1 overflow-x-clip px-3 pt-4 pb-20 sm:px-4 lg:px-6 lg:pb-8">
-          <div className="crm-main-content mx-auto w-full max-w-5xl">{children}</div>
+          {/* Uncapped: this is a work surface, not an article. Dense screens —
+              the lead table, the analytics grid — were being squeezed into
+              64rem while a wide monitor sat half empty either side. */}
+          <div className="crm-main-content mx-auto w-full">{children}</div>
         </main>
       </div>
 

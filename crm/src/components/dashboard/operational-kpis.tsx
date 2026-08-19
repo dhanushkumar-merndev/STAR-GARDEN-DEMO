@@ -210,7 +210,10 @@ export function OperationalKpis({
   ];
 
   return (
-    <div className="space-y-6">
+    // Two sections abreast once there is room for both to keep their four
+    // tiles across; below that they stack, since a half-width column would
+    // start wrapping the tiles two-up and lose the at-a-glance row.
+    <div className="grid gap-6 2xl:grid-cols-2">
       {sections.map((section) => (
         <section key={section.id}>
           <div className="mb-2.5 flex items-start justify-between gap-3">
