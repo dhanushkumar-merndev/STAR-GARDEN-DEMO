@@ -14,6 +14,8 @@ export const company = {
   contactPerson: 'Abhishek Suhas',
   website: 'www.stargardens.in',
   siteUrl: 'https://www.stargardens.in',
+  // Staff sign-in lives on the separate CRM deployment, not on this site.
+  crmUrl: 'https://crm.stargardens.in/login',
   headOffice:
     'No. 18, 1st Floor, 1st Main, BSK 1st Stage, Srinivasa Nagar, 80 Feet Main Road, Bengaluru, Karnataka 560050',
   wholesaleNursery: 'Kumulgudu, Bangalore',

@@ -86,6 +86,16 @@ export default function Navbar() {
         </div>
 
         <div className="hidden items-center gap-2 lg:flex">
+          {/* Staff sign-in — routes off-site to the CRM's own deployment, not a page
+              on this app. Kept understated (outline, no fill) since it's not a
+              customer-facing CTA. */}
+          <a
+            href={company.crmUrl}
+            className="hidden items-center gap-1.5 rounded-full border border-forest-200 px-3 py-1.5 text-[0.8125rem] font-medium text-forest-700 transition-colors duration-300 hover:border-gold-400 hover:text-gold-600 xl:inline-flex"
+          >
+            <Icon name="User" size={15} />
+            Staff Login
+          </a>
           <a
             href={`https://wa.me/${company.whatsappHref}`}
             target="_blank"
@@ -175,6 +185,13 @@ export default function Navbar() {
                 <Icon name="WhatsApp" size={16} /> WhatsApp
               </a>
             </div>
+            <a
+              href={company.crmUrl}
+              className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-xl border border-forest-200 px-4 py-2.5 text-sm font-medium text-forest-700"
+            >
+              <Icon name="User" size={15} />
+              Staff Login
+            </a>
           </div>
         </div>
       </div>
