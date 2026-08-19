@@ -215,7 +215,11 @@ export function OperationalKpis({
     // start wrapping the tiles two-up and lose the at-a-glance row.
     <div className="grid gap-6 2xl:grid-cols-2">
       {sections.map((section) => (
-        <section key={section.id}>
+        // Column, so the panel below the tiles can absorb the leftover height:
+        // grid already stretches the two sections in a row to match, but
+        // without this their inner cards still end wherever their own content
+        // does, leaving one short and the row visibly ragged.
+        <section key={section.id} className="flex flex-col">
           <div className="mb-2.5 flex items-start justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
@@ -234,7 +238,7 @@ export function OperationalKpis({
           </div>
 
           {!['site-visits', 'designs', 'follow-ups', 'execution'].includes(section.id) ? (
-            <div className="mt-3 rounded-xl border border-line bg-surface p-3 sm:p-4">
+            <div className="mt-3 flex-1 rounded-xl border border-line bg-surface p-3 sm:p-4">
               {section.id === 'leads' ? (
                 <CallOutcomeLineChart trend={data.leads.call_outcome_trends} />
               ) : section.id === 'sales' ? (
@@ -248,7 +252,7 @@ export function OperationalKpis({
             </div>
           ) : null}
           {section.id === 'follow-ups' ? (
-            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="mt-3 grid flex-1 gap-3 lg:grid-cols-2">
               <FollowUpPie data={data.follow_ups} />
               <FollowUpTopMembers
                 members={data.follow_ups.members ?? []}
@@ -574,7 +578,7 @@ function DesignOverview({ data }: { data: AdminOperationalKpis['designs'] }) {
   };
   const members = (data.members ?? []).slice(0, 10);
   return (
-    <div className="mt-3 grid overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Design work</p>
         <p className="text-[11px] text-ink-muted">Pending compared with completed designs</p>
@@ -610,7 +614,7 @@ function ExecutionOverview({ data }: { data: AdminOperationalKpis['execution'] }
     series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], label: { formatter: '{b}\n{c}', color: CHART_INK.muted }, data: pie }],
   };
   return (
-    <div className="mt-3 grid overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Execution progress</p>
         <p className="text-[11px] text-ink-muted">Assigned, in progress, and completed projects</p>
@@ -649,7 +653,7 @@ function SiteVisitOverview({ data }: { data: AdminOperationalKpis['site_visits']
   }), [pieData]);
 
   return (
-    <div className="mt-3 grid overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Scheduled vs completed</p>
         <p className="text-[11px] text-ink-muted">Visits in the selected date range</p>

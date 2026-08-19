@@ -65,7 +65,10 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
         </div>
       </div>
 
-      <div className="grid w-full grid-cols-1 gap-2.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+      {/* `ml-auto` closes the gap the uncapped workspace opened up: the label
+          stays left, the controls sit against Refresh now instead of stranded
+          mid-row. Only from `sm` — stacked on a phone they should stay left. */}
+      <div className="grid w-full grid-cols-1 gap-2.5 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center">
         <label className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 sm:flex">
           <span className="text-xs font-medium text-ink-muted">From</span>
           <input
