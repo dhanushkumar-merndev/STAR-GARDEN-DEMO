@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FcGoogle } from 'react-icons/fc';
@@ -12,15 +11,21 @@ import {
 } from 'react-icons/lu';
 import { Button, Card, CardBody } from '@/components/ui';
 
-export const metadata: Metadata = {
-  title: 'About Star Gardens CRM',
-  description:
-    'Star Gardens CRM is the internal tool the Star Gardens team uses to manage landscaping ' +
-    'enquiries from first contact through site visit, design and execution.',
-};
+/**
+ * Absolute, not relative.
+ *
+ * Google's branding review checks that the privacy-policy link on the homepage
+ * matches the one configured on the consent screen, and that comparison is
+ * against a full URL. A bare `/privacy` href risks failing it on a string
+ * mismatch even though it resolves correctly in a browser.
+ */
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+const PRIVACY_URL = `${SITE_URL}/privacy`;
+
 
 /**
- * Public description of the application.
+ * Public description of the application, rendered by both `/` (for signed-out
+ * visitors) and `/home`.
  *
  * Exists because Google's OAuth branding review requires a homepage that is
  * reachable *without signing in* and that explains what the application does
@@ -66,7 +71,7 @@ const CAPABILITIES = [
   },
 ];
 
-export default function PublicHomePage() {
+export function AboutApp() {
   return (
     <main className="mx-auto w-full max-w-4xl px-5 py-12 sm:py-16">
       <header className="flex flex-col items-start gap-5">
@@ -147,9 +152,9 @@ export default function PublicHomePage() {
               <p className="mt-3 text-sm text-ink-muted">
                 We do not request access to Gmail, Drive, Calendar, Contacts or any other Google
                 service, and we never post anything to your Google account. Full detail is in the{' '}
-                <Link href="/privacy" className="font-medium text-brand-700 hover:underline">
+                <a href={PRIVACY_URL} className="font-medium text-brand-700 hover:underline">
                   privacy policy
-                </Link>
+                </a>
                 .
               </p>
             </div>
@@ -164,9 +169,9 @@ export default function PublicHomePage() {
             Staff sign in
           </Button>
         </Link>
-        <Link href="/privacy">
+        <a href={PRIVACY_URL}>
           <Button variant="outline">Privacy policy</Button>
-        </Link>
+        </a>
       </div>
 
       <footer className="mt-12 border-t border-line pt-6 text-xs text-ink-subtle">

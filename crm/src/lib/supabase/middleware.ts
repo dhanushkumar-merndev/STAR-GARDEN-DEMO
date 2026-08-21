@@ -19,8 +19,17 @@ const PUBLIC_PATHS = [
 /** API routes that authenticate by their own means (signature, secret, CORS). */
 const SELF_AUTHENTICATING_API = ['/api/public/', '/api/cron/', '/api/health'];
 
+/**
+ * Public on an exact match only.
+ *
+ * `/` cannot go in `PUBLIC_PATHS`: that list is prefix-matched, and every path
+ * starts with a slash, so it would make the entire application anonymous.
+ */
+const PUBLIC_EXACT_PATHS = ['/'];
+
 function isPublicPath(pathname: string): boolean {
   return (
+    PUBLIC_EXACT_PATHS.includes(pathname) ||
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     SELF_AUTHENTICATING_API.some((p) => pathname.startsWith(p))
   );
