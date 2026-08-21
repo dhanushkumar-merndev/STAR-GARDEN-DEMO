@@ -43,7 +43,7 @@ export function BusinessSettingsForm({ settings }: { settings: BusinessSettings 
   const preview = renderWhatsappMessage(template, {
     customerName: 'Ravi Kumar',
     businessName: name,
-    leadCode: 'SG-2026-001042',
+    leadCode: 'SG-2026-27-001',
   });
 
   return (

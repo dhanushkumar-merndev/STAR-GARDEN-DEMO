@@ -10,25 +10,18 @@ export { formatDue, formatDateTime, formatDate, formatTime, formatRelative, huma
 export { telHref } from '@/lib/utils/phone';
 
 import { formatMobile } from '@/lib/utils/phone';
-import type { LeadStatus } from '@/types/database';
 
 export function formatMobileDisplay(countryCode: string, national: string): string {
   return formatMobile(countryCode, national);
 }
 
 /**
- * Where the lead list starts with no query string.
- *
- * Lives here, not beside the filter form: that form is a Client Component, and
- * the list page is a Server Component that needs the same answer to resolve
- * its own filters. A function exported from a `'use client'` module cannot be
- * called on the server at all — only rendered or passed as a prop.
- *
- * Admins open onto the work that needs them — leads nobody owns yet. A BDM
- * cannot: their list is already scoped to leads assigned to *them*, and an
- * assigned lead is by definition never UNASSIGNED, so the same default would
- * hand them a permanently empty page.
+ * The stage-filter vocabulary, shared with the server. Re-exported here so lead
+ * components keep importing one module.
  */
-export function defaultStatusFilter(isAdmin: boolean): LeadStatus | 'ALL' {
-  return isAdmin ? 'UNASSIGNED' : 'ALL';
-}
+export {
+  STATUS_FILTERS,
+  defaultStatusFilter,
+  parseStatusFilter,
+} from '@/lib/leads/status-filters';
+export type { LeadStatusFilter } from '@/lib/leads/status-filters';

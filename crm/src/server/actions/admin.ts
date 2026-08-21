@@ -19,11 +19,14 @@ import {
 } from '@/lib/validation/schemas';
 import { normalizeWhatsappNumber } from '@/lib/settings';
 import {
+  archiveStaff as archiveStaffService,
   inviteStaff as inviteStaffService,
   revokeInvite as revokeInviteService,
+  unarchiveStaff as unarchiveStaffService,
   updateOwnProfile as updateOwnProfileService,
   updateStaff as updateStaffService,
 } from '@/server/services/users';
+import { applyJourneySettingToOpenVisits } from '@/server/services/site-visits';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { activeEmailProvider, sendEmail } from '@/lib/email';
 import { testEmail } from '@/lib/email/templates';
@@ -84,6 +87,61 @@ export async function updateStaffAction(
 
     revalidatePath('/settings/users');
     return { userId: profile.id };
+  });
+}
+
+/**
+ * Archive / unarchive take the id directly rather than a `FormData`.
+ *
+ * They are one-click row actions, not forms — there is nothing to collect, and
+ * routing them through `formDataToObject` would only add a way to mistype the
+ * field name. The id is still validated as a UUID before it reaches a query.
+ */
+export async function archiveStaffAction(userId: string): Promise<ActionResult<undefined>> {
+  return actionResult(async () => {
+    const user = await requireAdmin();
+    await archiveStaffService(user, parseUserId(userId));
+
+    revalidatePath('/settings/users');
+    revalidatePath('/settings');
+    return undefined;
+  });
+}
+
+export async function unarchiveStaffAction(userId: string): Promise<ActionResult<undefined>> {
+  return actionResult(async () => {
+    const user = await requireAdmin();
+    await unarchiveStaffService(user, parseUserId(userId));
+
+    revalidatePath('/settings/users');
+    revalidatePath('/settings');
+    return undefined;
+  });
+}
+
+function parseUserId(value: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    throw new AppError('VALIDATION', 'Invalid user.');
+  }
+  return value;
+}
+
+/**
+ * Pushes the journey setting onto visits already booked (§8.3).
+ *
+ * Separate from saving the setting so the two are separate decisions: the
+ * toggle changes what happens next, this changes what is already scheduled.
+ */
+export async function applyJourneySettingToOpenVisitsAction(): Promise<
+  ActionResult<{ updated: number; skipped: number }>
+> {
+  return actionResult(async () => {
+    const user = await requireAdmin();
+    const result = await applyJourneySettingToOpenVisits(user);
+
+    revalidatePath('/settings');
+    revalidatePath('/site-visits');
+    return result;
   });
 }
 

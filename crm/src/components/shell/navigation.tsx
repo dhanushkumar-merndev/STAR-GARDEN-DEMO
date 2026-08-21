@@ -92,11 +92,15 @@ export function MobileNav({ role }: { role: UserRole }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface lg:hidden"
+      className="relative z-40 w-full shrink-0 overflow-x-clip border-t border-line bg-surface lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       aria-label="Primary"
     >
-      <div className="mx-auto flex max-w-lg">
+      {/* Edge to edge, not a centred 32rem bar. The cap was meant to keep five
+          targets in thumb reach on a large phone, but it reads as the nav being
+          off-centre against a full-width page, and every phone this is used on
+          is narrower than the cap anyway. */}
+      <div className="flex w-full min-w-0">
         {primaryItems.map((item) => {
           const Icon = item.icon;
           const active = isActivePath(pathname, item);
@@ -130,9 +134,9 @@ export function MobileNav({ role }: { role: UserRole }) {
           </DialogPrimitive.Trigger>
 
           <DialogPrimitive.Portal>
-            <DialogPrimitive.Overlay className="mobile-menu-overlay fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+            <DialogPrimitive.Overlay className="mobile-menu-overlay fixed inset-0 z-50 bg-black/40" />
             <DialogPrimitive.Content
-              className="mobile-menu-drawer fixed inset-y-0 right-0 z-50 flex w-[min(21rem,88vw)] flex-col border-l border-line bg-surface shadow-2xl focus:outline-none"
+              className="mobile-menu-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-full flex-col bg-surface shadow-2xl focus:outline-none sm:w-[min(21rem,88vw)] sm:border-l sm:border-line"
               aria-describedby={undefined}
             >
               <div className="flex h-14 items-center justify-between border-b border-line px-4">

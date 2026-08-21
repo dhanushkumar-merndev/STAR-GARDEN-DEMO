@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LuPlus, LuSlidersHorizontal, LuUsers } from 'react-icons/lu';
 import { requirePageRole } from '@/lib/auth/session';
-import { listAssignableBdms, listLeads, type LeadListFilters } from '@/server/services/leads';
+import { countLeadsByStage, listAssignableBdms, listLeads, type LeadListFilters } from '@/server/services/leads';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
 import { maskMobile } from '@/lib/utils/phone';
-import type { LeadStatus } from '@/types/database';
 import { LeadFilterForm } from '@/components/leads/lead-filter-form';
-import { defaultStatusFilter } from '@/components/leads/helpers';
+import { LeadStageTabs } from '@/components/leads/lead-stage-tabs';
+import { parseStatusFilter, type LeadListQuery } from '@/lib/leads/status-filters';
 import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Leads' };
@@ -37,17 +37,26 @@ export default async function LeadsPage({
 
   const filters: LeadListFilters = {
     search: read('q'),
-    status: (read('status') as LeadStatus | 'ALL') ?? defaultStatusFilter(user.isAdmin),
+    status: parseStatusFilter(read('status'), user.isAdmin),
     source: read('source') ?? 'ALL',
     assignedTo: read('assignedTo') ?? 'ALL',
     scope: (read('scope') as LeadListFilters['scope']) ?? (user.isAdmin ? 'ALL' : 'MINE'),
     page: Number(read('page') ?? 1),
   };
 
-  const [{ items, total, page, pageSize }, bdms] = await Promise.all([
+  const [{ items, total, page, pageSize }, bdms, stageCounts] = await Promise.all([
     listLeads(user, filters),
     user.isAdmin ? listAssignableBdms() : Promise.resolve([]),
+    countLeadsByStage(user, filters),
   ]);
+
+  const current: LeadListQuery = {
+    q: filters.search ?? '',
+    status: filters.status ?? 'ALL',
+    source: filters.source ?? 'ALL',
+    assignedTo: filters.assignedTo ?? 'ALL',
+    scope: filters.scope ?? (user.isAdmin ? 'ALL' : 'MINE'),
+  };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const scopeLabel = SCOPE_LABELS[filters.scope ?? 'ALL'];
@@ -63,10 +72,7 @@ export default async function LeadsPage({
               <Button className="gap-1.5"><LuPlus className="size-4" />New lead</Button>
             </Link>
             <MobileSheet label="Filter" title="Filter leads" description="Search and narrow this lead view." icon={<LuSlidersHorizontal className="size-4" />}>
-              <LeadFilterForm isAdmin={user.isAdmin} bdms={bdms} initial={{
-                q: filters.search ?? '', status: filters.status ?? 'ALL', source: filters.source ?? 'ALL',
-                assignedTo: filters.assignedTo ?? 'ALL', scope: filters.scope ?? (user.isAdmin ? 'ALL' : 'MINE'),
-              }} />
+              <LeadFilterForm isAdmin={user.isAdmin} bdms={bdms} initial={current} />
             </MobileSheet>
           </div>
         }
@@ -77,15 +83,11 @@ export default async function LeadsPage({
           key={`${filters.search ?? ''}|${filters.status ?? 'ALL'}|${filters.source ?? 'ALL'}|${filters.assignedTo ?? 'ALL'}|${filters.scope ?? ''}`}
           isAdmin={user.isAdmin}
           bdms={bdms}
-          initial={{
-            q: filters.search ?? '',
-            status: filters.status ?? 'ALL',
-            source: filters.source ?? 'ALL',
-            assignedTo: filters.assignedTo ?? 'ALL',
-            scope: filters.scope ?? (user.isAdmin ? 'ALL' : 'MINE'),
-          }}
+          initial={current}
         />
       </Card>
+
+      <LeadStageTabs isAdmin={user.isAdmin} current={current} stageCounts={stageCounts} />
 
       {items.length === 0 ? (
         <Card>

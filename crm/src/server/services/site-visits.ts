@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
+import { DEFAULT_PAGE_SIZE, type PaginatedResult } from '@/lib/pagination';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import {
   adminUserIds,
@@ -16,6 +17,7 @@ import { assertCanReadSiteVisit, assertCanWriteLead, assertLeadCanStartDelivery 
 import { canScheduleVisitTime } from '@/lib/permissions';
 import { assertSiteVisitTransition } from '@/lib/state-machines';
 import { hasVisitDayArrived } from '@/lib/utils/visit-timing';
+import { getSettings } from '@/lib/settings';
 import type { SessionUser } from '@/lib/auth/session';
 import type { SiteVisitRow } from '@/types/database';
 import { refreshLeadNextAction } from './activities';
@@ -122,6 +124,9 @@ export async function scheduleSiteVisit(
       notes: input.notes ?? null,
       status: 'SCHEDULED',
       assigned_designer_id: designerId,
+      // Captured now, not read later: the visit keeps the mode it was booked
+      // in even if an Admin flips the setting tomorrow.
+      journey_tracking_enabled: (await getSettings()).siteVisitJourneyEnabled,
       created_by: user.id,
     })
     .select('*')
@@ -304,6 +309,98 @@ export async function rescheduleSiteVisit(
 }
 
 /**
+ * Open visits that could still change mode.
+ *
+ * "Open" is not enough on its own — a visit whose designer has already tapped
+ * Start journey is mid-flight, and pulling the remaining steps out from under
+ * them is exactly the thing the per-visit flag exists to prevent.
+ */
+export async function countConvertibleVisits(user: SessionUser): Promise<number> {
+  if (!user.isAdmin) return 0;
+  const supabase = await createClient();
+
+  const { count } = await supabase
+    .from('site_visits')
+    .select('id', { count: 'exact', head: true })
+    .not('status', 'in', '("COMPLETED","CANCELLED")')
+    .eq('journey_status', 'NOT_STARTED')
+    .is('check_in_at', null);
+
+  return count ?? 0;
+}
+
+/**
+ * Applies the current setting to visits already booked.
+ *
+ * Deliberately an explicit action rather than a side effect of the toggle:
+ * changing what is on the screen of a designer who is out on the road is the
+ * kind of thing somebody should have to ask for.
+ */
+export async function applyJourneySettingToOpenVisits(
+  user: SessionUser,
+): Promise<{ updated: number; skipped: number }> {
+  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Admin access is required.');
+
+  const { siteVisitJourneyEnabled } = await getSettings();
+  const supabase = await createClient();
+
+  const { data: open } = await supabase
+    .from('site_visits')
+    .select('id, journey_status, check_in_at')
+    .not('status', 'in', '("COMPLETED","CANCELLED")');
+
+  const rows = open ?? [];
+  const convertible = rows.filter(
+    (row) => row.journey_status === 'NOT_STARTED' && !row.check_in_at,
+  );
+  const skipped = rows.length - convertible.length;
+
+  if (convertible.length === 0) return { updated: 0, skipped };
+
+  const { error } = await supabase
+    .from('site_visits')
+    .update({ journey_tracking_enabled: siteVisitJourneyEnabled })
+    .in(
+      'id',
+      convertible.map((row) => row.id),
+    );
+
+  if (error) {
+    throw new AppError('INTERNAL', 'Could not update the open visits.', { cause: error });
+  }
+
+  await recordAudit({
+    actorUserId: user.id,
+    action: AuditAction.SETTING_UPDATED,
+    entityType: 'site_visit',
+    after: {
+      journey_tracking_enabled: siteVisitJourneyEnabled,
+      row_count: convertible.length,
+      note: 'Applied the journey setting to open visits that had not started.',
+    },
+  });
+
+  return { updated: convertible.length, skipped };
+}
+
+/**
+ * Refuses a journey step while the Admin has journey tracking switched off.
+ *
+ * The visit page hides these controls in that mode, but hiding a button is a
+ * convenience — this is the check that decides (§7.5). It matters more than
+ * usual here because the switch can flip mid-visit: a designer with the page
+ * already open would otherwise still be holding a live "Reached site".
+ */
+function assertJourneyTrackingEnabled(visit: SiteVisitRow): void {
+  if (visit.journey_tracking_enabled) return;
+
+  throw new AppError(
+    'INVALID_TRANSITION',
+    'Journey tracking is switched off for this visit. Complete it in one step instead.',
+  );
+}
+
+/**
  * Refuses a journey tap before the day the visit is booked for.
  *
  * The UI hides the buttons until then, but that is a convenience — this is the
@@ -342,6 +439,8 @@ export async function startJourney(
   if (!isAttendee && !user.isAdmin) {
     await assertCanWriteLead(user, visit.lead_id);
   }
+
+  assertJourneyTrackingEnabled(visit);
 
   if (visit.status === 'CANCELLED' || visit.status === 'COMPLETED') {
     throw new AppError(
@@ -426,6 +525,7 @@ export async function checkIn(
     await assertCanWriteLead(user, visit.lead_id);
   }
 
+  assertJourneyTrackingEnabled(visit);
   assertSiteVisitTransition(visit.status, 'IN_PROGRESS');
   assertVisitDayArrived(visit.scheduled_start_at, 'record arrival');
 
@@ -589,6 +689,8 @@ export async function checkOut(
     await assertCanWriteLead(user, visit.lead_id);
   }
 
+  assertJourneyTrackingEnabled(visit);
+
   if (!visit.check_in_at) {
     throw new AppError('INVALID_TRANSITION', 'Check in before checking out.');
   }
@@ -637,7 +739,9 @@ export async function completeSiteVisit(
   const { visit } = await assertCanReadSiteVisit(user, input.site_visit_id);
   await assertCanWriteLead(user, visit.lead_id);
 
-  assertSiteVisitTransition(visit.status, 'COMPLETED');
+  assertSiteVisitTransition(visit.status, 'COMPLETED', {
+    journeyTrackingEnabled: visit.journey_tracking_enabled,
+  });
 
   const supabase = await createClient();
   const { data: updated, error } = await supabase
@@ -765,49 +869,112 @@ export async function cancelSiteVisit(
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export async function listSiteVisits(
-  user: SessionUser,
-  options: { scope?: 'UPCOMING' | 'TODAY' | 'OVERDUE' | 'COMPLETED' | 'ALL'; limit?: number } = {},
-): Promise<SiteVisitWithLead[]> {
-  const supabase = await createClient();
+export type SiteVisitScope = 'UPCOMING' | 'TODAY' | 'OVERDUE' | 'COMPLETED' | 'ALL';
+
+/** The scope predicate, shared by the list and the tab counts (see follow-ups). */
+function applySiteVisitScope<Q extends {
+  in: (column: string, values: string[]) => Q;
+  eq: (column: string, value: string) => Q;
+  gte: (column: string, value: string) => Q;
+  lte: (column: string, value: string) => Q;
+  lt: (column: string, value: string) => Q;
+}>(query: Q, scope: SiteVisitScope): Q {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
+  const OPEN = ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'];
+
+  switch (scope) {
+    case 'UPCOMING':
+      return query.in('status', OPEN).gte('scheduled_start_at', now.toISOString());
+    case 'TODAY':
+      return query
+        .in('status', OPEN)
+        .gte('scheduled_start_at', startOfToday)
+        .lte('scheduled_start_at', endOfToday);
+    case 'OVERDUE':
+      return query.in('status', OPEN).lt('scheduled_start_at', now.toISOString());
+    case 'COMPLETED':
+      return query.eq('status', 'COMPLETED');
+    default:
+      return query;
+  }
+}
+
+export async function countSiteVisitsByScope(
+  scopes: readonly SiteVisitScope[],
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+  const { data, error } = await supabase.rpc('site_visit_scope_counts', {
+    p_now: now.toISOString(),
+    p_start_today: startOfToday,
+    p_end_today: endOfToday,
+  });
+  if (error) {
+    console.warn('[site-visits] site_visit_scope_counts RPC unavailable; using count fallback', error);
+    const entries = await Promise.all(
+      scopes.map(async (scope) => {
+        const { count, error: countError } = await applySiteVisitScope(
+          supabase.from('site_visits').select('id', { count: 'exact', head: true }),
+          scope,
+        );
+        if (countError) {
+          throw new AppError('INTERNAL', 'Could not count site visits.', { cause: countError });
+        }
+        return [scope, count ?? 0] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
+  }
+
+  const values = data && !Array.isArray(data) && typeof data === 'object' ? data : {};
+  return Object.fromEntries(scopes.map((scope) => [scope, Number(values[scope] ?? 0)]));
+}
+
+export async function listSiteVisits(
+  user: SessionUser,
+  options: {
+    scope?: 'UPCOMING' | 'TODAY' | 'OVERDUE' | 'COMPLETED' | 'ALL';
+    limit?: number;
+    offset?: number;
+    /**
+     * Setting this switches the call into paged mode: `pageSize` rows at that
+     * offset, plus an exact `total`. Left unset (dashboard panels) the call
+     * keeps its `limit`/`offset` behaviour and skips the count, which is a
+     * full scan under RLS.
+     */
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResult<SiteVisitWithLead>> {
+  const supabase = await createClient();
+  const paged = options.page !== undefined;
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = paged
+    ? Math.min(100, Math.max(5, options.pageSize ?? DEFAULT_PAGE_SIZE))
+    : Math.min(500, Math.max(1, options.limit ?? 100));
+  const offset = paged ? (page - 1) * pageSize : Math.max(0, options.offset ?? 0);
 
   let query = supabase
     .from('site_visits')
     .select(
-      '*, lead:leads!site_visits_lead_id_fkey(id, lead_code, customer_name, mobile_country_code, mobile_normalized)',
+      'id, lead_id, scheduled_start_at, address, status, lead:leads!site_visits_lead_id_fkey(id, lead_code, customer_name, mobile_country_code, mobile_normalized)',
+      paged ? { count: 'exact' } : undefined,
     );
 
-  switch (options.scope ?? 'ALL') {
-    case 'UPCOMING':
-      query = query
-        .in('status', ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'])
-        .gte('scheduled_start_at', now.toISOString());
-      break;
-    case 'TODAY':
-      query = query
-        .in('status', ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'])
-        .gte('scheduled_start_at', startOfToday)
-        .lte('scheduled_start_at', endOfToday);
-      break;
-    case 'OVERDUE':
-      query = query
-        .in('status', ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'])
-        .lt('scheduled_start_at', now.toISOString());
-      break;
-    case 'COMPLETED':
-      query = query.eq('status', 'COMPLETED');
-      break;
-  }
+  query = applySiteVisitScope(query, options.scope ?? 'ALL');
 
-  const { data, error } = await query
+  const { data, count, error } = await query
     .order('scheduled_start_at', { ascending: (options.scope ?? 'ALL') !== 'COMPLETED' })
-    .limit(options.limit ?? 100);
+    .range(offset, offset + pageSize - 1);
 
   if (error) throw new AppError('INTERNAL', 'Could not load site visits.', { cause: error });
-  return (data ?? []) as unknown as SiteVisitWithLead[];
+
+  const items = (data ?? []) as unknown as SiteVisitWithLead[];
+  return { items, total: count ?? items.length, page, pageSize };
 }
 
 export async function getSiteVisitDetail(user: SessionUser, siteVisitId: string) {

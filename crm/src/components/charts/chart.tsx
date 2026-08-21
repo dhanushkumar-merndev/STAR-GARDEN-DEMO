@@ -42,9 +42,21 @@ export interface ChartProps {
   table?: { label: string; value: string }[];
   /** Tailwind height class. Charts need an explicit box to measure against. */
   className?: string;
+  /**
+   * Grow to fill a flex parent instead of standing at `className`'s height.
+   *
+   * Needed because the wrapping `<figure>` is a plain block: an `h-full` on the
+   * canvas inside it resolves against a parent of auto height and does nothing,
+   * which is how a stretched panel ended up with a short chart and a band of
+   * white space beneath it. With this the figure joins the flex column and
+   * passes the height through.
+   *
+   * `className` still applies, so a caller can set a floor with `min-h-*`.
+   */
+  fill?: boolean;
 }
 
-export function Chart({ option, summary, table, className = 'h-64' }: ChartProps) {
+export function Chart({ option, summary, table, className = 'h-64', fill = false }: ChartProps) {
   const elementRef = React.useRef<HTMLDivElement>(null);
   const chartRef = React.useRef<echarts.ECharts | null>(null);
 
@@ -76,8 +88,18 @@ export function Chart({ option, summary, table, className = 'h-64' }: ChartProps
   }, [option]);
 
   return (
-    <figure className="m-0">
-      <div ref={elementRef} className={`w-full ${className}`} role="img" aria-label={summary} />
+    <figure className={fill ? 'm-0 flex min-h-0 min-w-0 flex-1 flex-col' : 'm-0'}>
+      {/* `min-w-0` matters as much as `min-h-0` once this is a flex item.
+          ECharts writes an explicit pixel width onto its `<svg>`, and a flex
+          item's default `min-width: auto` refuses to shrink below that — so the
+          chart pinned the dashboard grid open and the whole page overflowed
+          sideways on a phone. */}
+      <div
+        ref={elementRef}
+        className={`w-full ${fill ? 'min-h-0 min-w-0 flex-1 ' : ''}${className}`}
+        role="img"
+        aria-label={summary}
+      />
       {table && table.length > 0 ? (
         <div className="sr-only">
           <table>

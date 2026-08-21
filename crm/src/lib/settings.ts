@@ -27,6 +27,15 @@ export interface AppSettings {
   designDueReminderLeadHours: number;
   duplicateLookbackDays: number;
   defaultCountryCode: string;
+  /**
+   * Whether a site visit runs through "Start journey → Reached site → Check
+   * out" before it can be completed (§8.3).
+   *
+   * Off means one step: complete the visit. The journey columns are untouched
+   * either way, so switching it back on restores the chain — and every journey
+   * already recorded — without a data migration.
+   */
+  siteVisitJourneyEnabled: boolean;
 }
 
 /**
@@ -68,6 +77,7 @@ const DEFAULTS: AppSettings = {
   designDueReminderLeadHours: 48,
   duplicateLookbackDays: 365,
   defaultCountryCode: '+91',
+  siteVisitJourneyEnabled: true,
 };
 
 const BUSINESS_DEFAULTS: BusinessSettings = {
@@ -145,6 +155,10 @@ export const getSettings = cache(async (): Promise<AppSettings> => {
         DEFAULTS.duplicateLookbackDays,
       ),
       defaultCountryCode: asString(map.get('default_country_code'), DEFAULTS.defaultCountryCode),
+      siteVisitJourneyEnabled: asBoolean(
+        map.get('site_visit_journey_enabled'),
+        DEFAULTS.siteVisitJourneyEnabled,
+      ),
     };
   } catch (error) {
     console.error('[settings] falling back to defaults', error);

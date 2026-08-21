@@ -42,8 +42,8 @@ export default async function PortalPage() {
           <Image
             src="/images/logo.webp"
             alt={business.name}
-            width={160}
-            height={36}
+            width={178}
+            height={32}
             priority
             className="h-8 w-auto object-contain"
           />

@@ -57,13 +57,28 @@ export const CHART_FONT =
   "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 
 /** Tooltip chrome shared by every chart. */
+/**
+ * `confine`, and deliberately not `appendToBody`.
+ *
+ * Appending to `<body>` escapes any clipping ancestor, but it also positions
+ * the tooltip against the document — and a seven-row legend is wider than a
+ * phone, so it spilled past the right edge and dragged the whole page into a
+ * sideways scroll. `confine` keeps it inside the chart's own box, which is the
+ * only box guaranteed to be on screen.
+ *
+ * The width cap and wrapping matter for the same reason: without them a long
+ * series name sets the tooltip's width and it hangs off a narrow screen even
+ * when confined.
+ */
 export const TOOLTIP_BASE = {
   backgroundColor: CHART_INK.surface,
   borderColor: CHART_INK.line,
   borderWidth: 1,
+  confine: true,
   padding: [8, 10] as [number, number],
   textStyle: { color: CHART_INK.primary, fontSize: 12, fontFamily: CHART_FONT },
-  extraCssText: 'border-radius:10px;box-shadow:0 6px 20px rgba(16,32,24,0.10);',
+  extraCssText:
+    'border-radius:10px;box-shadow:0 6px 20px rgba(16,32,24,0.10);max-width:min(18rem,78vw);white-space:normal;',
 } as const;
 
 export const AXIS_LABEL = {

@@ -167,9 +167,30 @@ export function assertLeadTransition(
 export function assertSiteVisitTransition(
   from: SiteVisitStatus,
   to: SiteVisitStatus,
-  context: { hasCheckIn?: boolean; cancellationReason?: string | null } = {},
+  context: {
+    hasCheckIn?: boolean;
+    cancellationReason?: string | null;
+    /** `false` when the Admin has switched journey tracking off (§8.3). */
+    journeyTrackingEnabled?: boolean;
+  } = {},
 ): void {
-  assertTransition(SITE_VISIT_TRANSITIONS, from, to, 'Site visit');
+  /**
+   * The one edge that depends on configuration.
+   *
+   * IN_PROGRESS is reached by checking in, and checking in only exists inside
+   * journey tracking. With tracking off there is nothing to move a booked visit
+   * out of SCHEDULED, so it completes directly. The edge is added only in that
+   * mode deliberately: while tracking is on, letting a visit complete with no
+   * arrival on record would defeat the point of recording arrivals.
+   */
+  const directCompletion =
+    to === 'COMPLETED' &&
+    context.journeyTrackingEnabled === false &&
+    (from === 'SCHEDULED' || from === 'RESCHEDULED');
+
+  if (!directCompletion) {
+    assertTransition(SITE_VISIT_TRANSITIONS, from, to, 'Site visit');
+  }
 
   if (to === 'CANCELLED' && !context.cancellationReason?.trim()) {
     throw new AppError('VALIDATION', 'A reason is required to cancel a site visit.', {

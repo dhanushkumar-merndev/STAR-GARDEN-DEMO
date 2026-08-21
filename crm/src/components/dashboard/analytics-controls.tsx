@@ -11,11 +11,14 @@ export function AnalyticsControls({
   dateLabel,
   from,
   to,
+  isCustom = false,
 }: {
   firstName: string;
   dateLabel: string;
   from?: string;
   to?: string;
+  /** True when the range came from the URL rather than the 30-day default. */
+  isCustom?: boolean;
 }) {
   const refreshButton = (
     <form action={refreshAdminDashboardAction} className="shrink-0 lg:border-l lg:border-line lg:pl-3">
@@ -46,11 +49,9 @@ export function AnalyticsControls({
             description="Choose the dates used by every analytics chart."
           >
             <div className="space-y-3">
-              <DateRangeFilter from={from} to={to} />
+              <DateRangeFilter from={from} to={to} isCustom={isCustom} />
               {refreshButton}
-              <p className="text-xs text-ink-muted">
-                Analytics are cached for one hour. Refresh for current data.
-              </p>
+              <p className="text-xs text-ink-muted">Cached for an hour. Refresh for live figures.</p>
             </div>
           </DialogContent>
         </Dialog>
@@ -59,12 +60,10 @@ export function AnalyticsControls({
       <div className="hidden lg:block">
         <p className="mb-3 text-sm text-ink-muted">{dateLabel}</p>
         <div className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
-          <DateRangeFilter from={from} to={to} />
+          <DateRangeFilter from={from} to={to} isCustom={isCustom} />
           {refreshButton}
         </div>
-        <p className="mt-3 text-xs text-muted">
-          Analytics are cached for one hour. Refresh anytime for current data.
-        </p>
+        <p className="mt-2 text-xs text-ink-muted">Cached for an hour. Refresh for live figures.</p>
       </div>
     </>
   );

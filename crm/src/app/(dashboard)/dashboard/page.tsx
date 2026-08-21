@@ -20,7 +20,7 @@ import {
   getDesignerDashboard,
   getExecutionDashboard,
 } from '@/server/services/dashboard';
-import type { DashboardDateRange } from '@/server/services/dashboard';
+import { defaultAnalyticsDates, type DashboardDateRange } from '@/server/services/dashboard';
 import { listFollowUps } from '@/server/services/follow-ups';
 import { listSiteVisits } from '@/server/services/site-visits';
 import { Alert, Card, CardHeader, CardBody, EmptyState, PageHeader, StatTile } from '@/components/ui';
@@ -104,12 +104,15 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
   const user = await requirePageUser();
   const data = await getAdminDashboard(user, dateRange);
   const analyticsDescription = formatAnalyticsRange(data.analyticsRange);
+  const defaults = defaultAnalyticsDates();
 
   const attention =
     data.unassigned + data.noNextAction + data.followUps.overdue + data.visitsOverdue;
 
   return (
     <div className="space-y-6">
+      {/* The pickers show the range actually in force, defaults included.
+          Left blank they claimed no range while every chart below used one. */}
       <AnalyticsControls
         firstName={firstName}
         dateLabel={new Date().toLocaleDateString('en-IN', {
@@ -117,8 +120,9 @@ async function AdminView({ dateRange, firstName }: { dateRange: DashboardDateRan
           day: 'numeric',
           month: 'long',
         })}
-        from={dateRange.from}
-        to={dateRange.to}
+        from={dateRange.from ?? defaults.from}
+        to={dateRange.to ?? defaults.to}
+        isCustom={Boolean(dateRange.from || dateRange.to)}
       />
 
       <OperationalKpis
@@ -347,9 +351,9 @@ async function BdmView() {
   const user = await requirePageUser();
   const [data, dueToday, overdue, visits] = await Promise.all([
     getBdmDashboard(user),
-    listFollowUps(user, { scope: 'TODAY', limit: 10 }),
-    listFollowUps(user, { scope: 'OVERDUE', limit: 10 }),
-    listSiteVisits(user, { scope: 'TODAY', limit: 10 }),
+    listFollowUps(user, { scope: 'TODAY', limit: 10 }).then((r) => r.items),
+    listFollowUps(user, { scope: 'OVERDUE', limit: 10 }).then((r) => r.items),
+    listSiteVisits(user, { scope: 'TODAY', limit: 10 }).then((r) => r.items),
   ]);
 
   return (
@@ -580,7 +584,7 @@ async function ExecutionView() {
 function FollowUpList({
   items,
 }: {
-  items: Awaited<ReturnType<typeof listFollowUps>>;
+  items: Awaited<ReturnType<typeof listFollowUps>>['items'];
 }) {
   return (
     <ul className="divide-y divide-line">

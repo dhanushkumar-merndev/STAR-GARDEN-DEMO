@@ -24,7 +24,21 @@ import { LuCalendarDays, LuRotateCcw } from 'react-icons/lu';
 const FIELD_CLASSES =
   'h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none sm:w-[9.5rem]';
 
-export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
+export function DateRangeFilter({
+  from,
+  to,
+  isCustom = false,
+}: {
+  from?: string;
+  to?: string;
+  /**
+   * Whether these dates were chosen, rather than the default the dashboard
+   * filled in. Reset is only an offer when there is something to reset from —
+   * once the fields are pre-filled, `from || to` is always true and the link
+   * would sit there permanently doing nothing.
+   */
+  isCustom?: boolean;
+}) {
   const [start, setStart] = React.useState(from ?? '');
   const [end, setEnd] = React.useState(to ?? '');
 
@@ -41,7 +55,18 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const active = Boolean(from || to);
+  const active = isCustom;
+
+  /**
+   * Apply is only live once the fields differ from the range already applied.
+   *
+   * Pressing it otherwise navigates to the URL the page is already on: the
+   * charts flicker through a reload and come back identical, which reads as a
+   * broken button rather than a no-op. Comparing against the props works
+   * because they are the applied range — after a successful Apply the new
+   * values arrive as props and the button settles back to disabled on its own.
+   */
+  const dirty = start !== (from ?? '') || end !== (to ?? '');
 
   return (
     <form
@@ -96,7 +121,9 @@ export function DateRangeFilter({ from, to }: { from?: string; to?: string }) {
 
         <button
           type="submit"
-          className="h-10 w-full rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 sm:w-auto"
+          disabled={!dirty}
+          title={dirty ? undefined : 'Change a date to apply a new range'}
+          className="h-10 w-full rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
         >
           Apply
         </button>

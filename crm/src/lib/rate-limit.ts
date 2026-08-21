@@ -31,26 +31,35 @@ export interface RateLimitOptions {
 
 export async function checkRateLimit(options: RateLimitOptions): Promise<RateLimitResult> {
   const { bucket, identifier, limit, windowSeconds } = options;
-  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
 
   try {
     const admin = createAdminClient();
 
-    const { count, error } = await admin
-      .from('rate_limit_hits')
-      .select('id', { count: 'exact', head: true })
-      .eq('bucket', bucket)
-      .eq('identifier', identifier)
-      .gte('created_at', since);
+    // Count + admission + insert happen under a per-identity advisory lock in
+    // Postgres. Two simultaneous requests can no longer both observe the same
+    // count and slip past the configured limit.
+    const { data, error } = await admin.rpc('check_rate_limit', {
+      p_bucket: bucket,
+      p_identifier: identifier,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
 
     if (error) throw error;
 
-    const used = count ?? 0;
-    if (used >= limit) {
-      return { allowed: false, remaining: 0, retryAfterSeconds: windowSeconds };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('Rate-limit RPC returned an invalid response.');
     }
 
-    await admin.from('rate_limit_hits').insert({ bucket, identifier });
+    const response = data as Record<string, unknown>;
+    const result: RateLimitResult = {
+      allowed: response.allowed === true,
+      remaining: typeof response.remaining === 'number' ? response.remaining : 0,
+      retryAfterSeconds:
+        typeof response.retry_after_seconds === 'number'
+          ? response.retry_after_seconds
+          : windowSeconds,
+    };
 
     // Opportunistic cleanup: drop rows well outside any window we use, so the
     // table cannot grow without bound. Cheap, and only ~2% of requests pay it.
@@ -59,7 +68,7 @@ export async function checkRateLimit(options: RateLimitOptions): Promise<RateLim
       await admin.from('rate_limit_hits').delete().lt('created_at', cutoff);
     }
 
-    return { allowed: true, remaining: limit - used - 1, retryAfterSeconds: 0 };
+    return result;
   } catch (error) {
     // Fail OPEN, and loudly. This limiter protects a contact form from spam; it
     // is not an authorization control, and a database hiccup must not take the

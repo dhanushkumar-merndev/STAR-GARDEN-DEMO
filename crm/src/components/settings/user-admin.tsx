@@ -3,8 +3,10 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { LuArchive } from 'react-icons/lu';
 import { Button, Checkbox, Input, Select } from '@/components/ui';
-import { inviteStaffAction, updateStaffAction } from '@/server/actions/admin';
+import { ConfirmDialog } from '@/components/ui/dialog';
+import { archiveStaffAction, inviteStaffAction, updateStaffAction } from '@/server/actions/admin';
 import type { ActiveWorkCounts } from '@/server/services/users';
 import type { ProfileRow, UserRole } from '@/types/database';
 
@@ -73,14 +75,106 @@ export function InviteStaffForm({ bdmEnabled = false }: { bdmEnabled?: boolean }
   );
 }
 
+/**
+ * Archive is a confirmed action, not a checkbox (§16).
+ *
+ * It is reversible — the archive modal in Settings hands the row back — but it
+ * also revokes access on the way out, so it gets the same "are you sure" as
+ * every other handoff-shaped decision in the CRM.
+ *
+ * The button is disabled rather than hidden when it cannot be used: an Admin
+ * looking for it needs to see *why* it is unavailable, which is what the
+ * active-work panel directly above already explains.
+ */
+function ArchiveStaffButton({
+  member,
+  blocked,
+  isSelf,
+}: {
+  member: ProfileRow;
+  blocked: boolean;
+  isSelf: boolean;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = React.useState(false);
+
+  const reason = isSelf
+    ? 'You cannot archive your own account.'
+    : blocked
+      ? 'Reassign their active work first.'
+      : undefined;
+
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="gap-1.5 text-ink-muted"
+      disabled={blocked || pending}
+      title={reason}
+    >
+      <LuArchive className="size-4" />
+      {pending ? 'Archiving…' : 'Archive'}
+    </Button>
+  );
+
+  // A disabled trigger inside a Radix `DialogTrigger asChild` still receives
+  // the click handler but never fires it; rendering the bare button keeps the
+  // tooltip working without an inert dialog attached to it.
+  if (blocked) return trigger;
+
+  return (
+    <ConfirmDialog
+      trigger={trigger}
+      title={`Archive ${member.full_name}?`}
+      description="They lose access immediately and disappear from the staff list."
+    >
+      {(close) => (
+        <div className="space-y-4">
+          <p className="text-sm text-ink-muted">
+            Their history stays intact — leads, calls, visits and the audit trail are unchanged.
+            You can bring them back from <strong className="text-ink">Archived staff</strong> at any
+            time, though access has to be granted again separately.
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={close} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={pending}
+              onClick={async () => {
+                setPending(true);
+                try {
+                  const result = await archiveStaffAction(member.id);
+                  if (result.ok) {
+                    toast.success(`${member.full_name} archived.`);
+                    close();
+                    router.refresh();
+                  } else toast.error(result.message);
+                } finally {
+                  setPending(false);
+                }
+              }}
+            >
+              {pending ? 'Archiving…' : 'Archive'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </ConfirmDialog>
+  );
+}
+
 export function StaffEditor({
   member,
   work,
   bdmEnabled = false,
+  isSelf = false,
 }: {
   member: ProfileRow;
   work: ActiveWorkCounts;
   bdmEnabled?: boolean;
+  isSelf?: boolean;
 }) {
   // Their current role is always offered, even a hidden one — otherwise saving
   // an unrelated edit would quietly change what they are.
@@ -179,6 +273,7 @@ export function StaffEditor({
           {dirty && !pending ? (
             <span className="text-xs text-ink-muted">Unsaved changes</span>
           ) : null}
+          <ArchiveStaffButton member={member} blocked={hasWork || isSelf} isSelf={isSelf} />
           {/* Nothing to save is not an error worth a toast — the button simply
               has no work to do until something differs from the saved row. */}
           <Button type="submit" variant="secondary" disabled={pending || !dirty || nameMissing}>
@@ -193,9 +288,11 @@ export function StaffEditor({
 export function StaffDirectory({
   staff,
   bdmEnabled = false,
+  currentUserId,
 }: {
   staff: (ProfileRow & { activeWork: ActiveWorkCounts })[];
   bdmEnabled?: boolean;
+  currentUserId: string;
 }) {
   const pageSize = 10;
   const [page, setPage] = React.useState(1);
@@ -224,6 +321,7 @@ export function StaffDirectory({
               member={member}
               work={member.activeWork}
               bdmEnabled={bdmEnabled}
+              isSelf={member.id === currentUserId}
             />
           </li>
         ))}

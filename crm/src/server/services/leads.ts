@@ -12,7 +12,8 @@ import { canAssignLeadToOthers } from '@/lib/permissions';
 import { assertLeadTransition } from '@/lib/state-machines';
 import type { SessionUser } from '@/lib/auth/session';
 import { getBusinessSettings } from '@/lib/settings';
-import type { LeadRow, LeadSource, LeadStatus, UserRole } from '@/types/database';
+import type { LeadRow, LeadStatus, UserRole } from '@/types/database';
+import { STATUS_FILTERS, type LeadStatusFilter } from '@/lib/leads/status-filters';
 import { intakeLead, type DuplicateMatch } from './lead-intake';
 import type { CreateLeadInput } from '@/lib/validation/schemas';
 
@@ -312,7 +313,11 @@ export async function setDesignRequired(
 
 export interface LeadListFilters {
   search?: string;
-  status?: LeadStatus | 'ALL';
+  /**
+   * A lead status, `'ALL'`, or one of the two delivery stages that live in
+   * their own tables (`IN_DESIGN`, `IN_EXECUTION`). See `parseStatusFilter`.
+   */
+  status?: LeadStatusFilter;
   source?: string;
   assignedTo?: string | 'UNASSIGNED' | 'ALL';
   scope?: 'MINE' | 'ALL' | 'UNASSIGNED' | 'NO_NEXT_ACTION';
@@ -335,40 +340,35 @@ export async function listLeads(
   const supabase = await createClient();
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, Math.max(5, filters.pageSize ?? 25));
+  const deliveryTable =
+    filters.status === 'IN_DESIGN'
+      ? 'design_projects'
+      : filters.status === 'IN_EXECUTION'
+        ? 'execution_projects'
+        : null;
+  const selection = deliveryTable
+    ? `*, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name), ${deliveryTable}!inner(id, status)`
+    : '*, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name)';
 
   let query = supabase
     .from('leads')
-    .select('*, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name)', { count: 'exact' });
+    .select(selection, { count: 'exact' });
 
-  if (filters.scope === 'MINE' || (user.role === 'BDM' && !filters.scope)) {
-    query = query.eq('assigned_bdm_id', user.id);
-  } else if (filters.scope === 'UNASSIGNED') {
-    query = query.is('assigned_bdm_id', null);
-  } else if (filters.scope === 'NO_NEXT_ACTION') {
-    // §8.2 / §12.1: live leads with nothing scheduled next.
-    query = query
-      .is('next_action_at', null)
-      .not('status', 'in', '("LOST","CLOSED")');
-  }
+  query = applyLeadListFilters(query, user, filters);
 
-  if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
-  if (filters.source && filters.source !== 'ALL') {
-    query = query.eq('source', filters.source as LeadSource);
-  }
-
-  if (filters.assignedTo && filters.assignedTo !== 'ALL') {
-    query = filters.assignedTo === 'UNASSIGNED'
-      ? query.is('assigned_bdm_id', null)
-      : query.eq('assigned_bdm_id', filters.assignedTo);
-  }
-
-  const search = filters.search?.trim();
-  if (search) {
-    const digits = search.replace(/\D/g, '');
-    const escaped = search.replace(/[%_,]/g, ' ');
-    query = digits.length >= 4
-      ? query.or(`mobile_normalized.ilike.%${digits}%,customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%`)
-      : query.or(`customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%,location_text.ilike.%${escaped}%`);
+  if (deliveryTable) {
+    const excluded =
+      deliveryTable === 'design_projects'
+        ? '("NOT_REQUIRED","CANCELLED")'
+        : '("COMPLETED","CANCELLED")';
+    query = query.not(`${deliveryTable}.status`, 'in', excluded);
+  } else if (
+    filters.status &&
+    filters.status !== 'ALL' &&
+    filters.status !== 'IN_DESIGN' &&
+    filters.status !== 'IN_EXECUTION'
+  ) {
+    query = query.eq('status', filters.status);
   }
 
   const from = (page - 1) * pageSize;
@@ -384,6 +384,146 @@ export async function listLeads(
     page,
     pageSize,
   };
+}
+
+/**
+ * Every lead-list filter except the stage.
+ *
+ * Stage is left out because the tab counts need exactly this set — the rows the
+ * other controls allow — before splitting it by status, and because two of the
+ * stages (`IN_DESIGN`, `IN_EXECUTION`) are not statuses and need an id lookup
+ * only the count path has to hand.
+ *
+ * Generic over the builder so the list query and the count query can share it;
+ * PostgREST types them differently despite the identical filter methods.
+ */
+function applyLeadListFilters<Q extends {
+  eq: (column: string, value: string) => Q;
+  is: (column: string, value: null) => Q;
+  not: (column: string, operator: string, value: string) => Q;
+  or: (filters: string) => Q;
+}>(query: Q, user: SessionUser, filters: LeadListFilters): Q {
+  let next = query;
+
+  if (filters.scope === 'MINE' || (user.role === 'BDM' && !filters.scope)) {
+    next = next.eq('assigned_bdm_id', user.id);
+  } else if (filters.scope === 'UNASSIGNED') {
+    next = next.is('assigned_bdm_id', null);
+  } else if (filters.scope === 'NO_NEXT_ACTION') {
+    // §8.2 / §12.1: live leads with nothing scheduled next.
+    next = next.is('next_action_at', null).not('status', 'in', '("LOST","CLOSED")');
+  }
+
+  if (filters.source && filters.source !== 'ALL') {
+    next = next.eq('source', filters.source);
+  }
+
+  if (filters.assignedTo && filters.assignedTo !== 'ALL') {
+    next = filters.assignedTo === 'UNASSIGNED'
+      ? next.is('assigned_bdm_id', null)
+      : next.eq('assigned_bdm_id', filters.assignedTo);
+  }
+
+  const search = filters.search?.trim();
+  if (search) {
+    const digits = search.replace(/\D/g, '');
+    const escaped = search.replace(/[%_,]/g, ' ');
+    next = digits.length >= 4
+      ? next.or(`mobile_normalized.ilike.%${digits}%,customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%`)
+      : next.or(`customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%,location_text.ilike.%${escaped}%`);
+  }
+
+  return next;
+}
+
+/** All lead stage tabs in one RLS-scoped database aggregate. */
+export async function countLeadsByStage(
+  user: SessionUser,
+  filters: LeadListFilters = {},
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const rawSearch = filters.search?.trim() || null;
+  const search = rawSearch?.replace(/[%_,]/g, ' ') ?? null;
+  const digits = rawSearch?.replace(/\D/g, '') ?? '';
+  const ownerId =
+    filters.scope === 'MINE' || (user.role === 'BDM' && !filters.scope) ? user.id : null;
+  const assignedTo = filters.assignedTo;
+
+  const { data, error } = await supabase.rpc('lead_stage_counts', {
+    p_owner_id: ownerId,
+    p_scope_unassigned: filters.scope === 'UNASSIGNED',
+    p_no_next_action: filters.scope === 'NO_NEXT_ACTION',
+    p_source: filters.source && filters.source !== 'ALL' ? filters.source : null,
+    p_assigned_to:
+      assignedTo && assignedTo !== 'ALL' && assignedTo !== 'UNASSIGNED' ? assignedTo : null,
+    p_assigned_unassigned: assignedTo === 'UNASSIGNED',
+    p_search: search,
+    p_search_digits: digits || null,
+    p_search_has_digits: digits.length >= 4,
+  });
+
+  if (error) {
+    // Deployments apply application code and migrations independently. Keep the
+    // Leads screen available during that short window (or on a stale preview
+    // database) instead of turning a missing optimization RPC into a blank
+    // page. The normal path above remains one aggregate query.
+    console.warn('[leads] lead_stage_counts RPC unavailable; using count fallback', error);
+    return countLeadsByStageFallback(supabase, user, filters);
+  }
+
+  const counts = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  const result: Record<string, number> = {};
+  for (const option of STATUS_FILTERS) {
+    const value = counts[option.value];
+    result[option.value] = typeof value === 'number' ? value : 0;
+  }
+  return result;
+}
+
+/** Compatibility path for databases that have not applied the RPC migration yet. */
+async function countLeadsByStageFallback(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: SessionUser,
+  filters: LeadListFilters,
+): Promise<Record<string, number>> {
+  const base = () =>
+    applyLeadListFilters(
+      supabase.from('leads').select('id', { count: 'exact', head: true }),
+      user,
+      { ...filters, status: 'ALL' },
+    );
+
+  const entries = await Promise.all(
+    STATUS_FILTERS.map(async (option) => {
+      let response;
+      if (option.value === 'ALL') {
+        response = await base();
+      } else if (option.value === 'IN_DESIGN' || option.value === 'IN_EXECUTION') {
+        const table = option.value === 'IN_DESIGN' ? 'design_projects' : 'execution_projects';
+        const excluded =
+          option.value === 'IN_DESIGN'
+            ? '("NOT_REQUIRED","CANCELLED")'
+            : '("COMPLETED","CANCELLED")';
+        response = await applyLeadListFilters(
+          supabase
+            .from('leads')
+            .select(`id, ${table}!inner(id)`, { count: 'exact', head: true })
+            .not(`${table}.status`, 'in', excluded),
+          user,
+          { ...filters, status: 'ALL' },
+        );
+      } else {
+        response = await base().eq('status', option.value);
+      }
+
+      if (response.error) {
+        throw new AppError('INTERNAL', 'Could not count lead stages.', { cause: response.error });
+      }
+      return [option.value, response.count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
 }
 
 /** Full lead detail with its timeline (§11.3). */

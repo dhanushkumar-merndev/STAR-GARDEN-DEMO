@@ -197,8 +197,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           <Image
             src="/images/logo.webp"
             alt="Star Gardens"
-            width={240}
-            height={55}
+            width={266}
+            height={48}
             priority
             className="h-12 w-auto object-contain"
           />

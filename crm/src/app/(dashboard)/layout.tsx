@@ -40,9 +40,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const unread = count ?? 0;
 
   return (
-    <div className="crm-shell flex min-h-dvh flex-col bg-canvas">
-      <header className="crm-header sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-        <div className="crm-header-content flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
+    <div className="crm-shell flex h-dvh flex-col overflow-hidden bg-canvas lg:h-auto lg:min-h-dvh lg:overflow-visible">
+      <header className="crm-header sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
+        <div className="crm-header-content flex h-14 min-w-0 items-center gap-2 px-3 sm:gap-3 sm:px-4">
           <Link
             href="/dashboard"
             className="hidden shrink-0 items-center lg:flex"
@@ -51,8 +51,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Image
               src="/images/logo.webp"
               alt="Star Gardens"
-              width={140}
-              height={32}
+              /* 2991x539 source; this pair must keep that 5.55 ratio or
+                 Next warns and the logo renders letterboxed. */
+              width={155}
+              height={28}
               priority
               className="h-7 w-auto object-contain"
             />
@@ -77,15 +79,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </header>
 
-      <div className="crm-workspace flex flex-1">
+      <div className="crm-workspace flex min-h-0 min-w-0 flex-1 overflow-hidden lg:overflow-visible">
         <DesktopNav role={user.role} />
 
-        {/* pb-20 keeps the last row clear of the fixed mobile nav bar. */}
-        <main className="min-w-0 flex-1 overflow-x-clip px-3 pt-4 pb-20 sm:px-4 lg:px-6 lg:pb-8">
+        {/* On mobile this is the shell's only scrolling region. Keeping the
+            header and bottom navigation outside it makes both remain visible
+            even in browsers that treat fixed elements as document content. */}
+        <main className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto px-3 pt-4 pb-4 sm:px-4 lg:overflow-y-visible lg:px-6 lg:pb-8">
           {/* Uncapped: this is a work surface, not an article. Dense screens —
               the lead table, the analytics grid — were being squeezed into
               64rem while a wide monitor sat half empty either side. */}
-          <div className="crm-main-content mx-auto w-full">{children}</div>
+          <div className="crm-main-content mx-auto w-full min-w-0 max-w-full">{children}</div>
         </main>
       </div>
 

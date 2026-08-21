@@ -349,15 +349,35 @@ export function CheckOutButton({
 export function CompleteVisitDialog({
   siteVisitId,
   triggerLabel = 'Complete visit',
+  photoUploadMaxSizeMb,
 }: {
   siteVisitId: string;
   triggerLabel?: string;
+  /**
+   * Set only when journey tracking is off (§8.3).
+   *
+   * Site photos normally arrive with the check-out dialog. Without that step
+   * this is the last moment anyone is asked about the visit, so the uploader
+   * moves here rather than the evidence being quietly lost.
+   */
+  photoUploadMaxSizeMb?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
+  const uploader = React.useRef<FileUploaderHandle>(null);
 
   async function handleSubmit(formData: FormData) {
+    // Same order as check-out, for the same reason: a failed upload must not
+    // leave a closed visit with no evidence and nobody left to re-attach it.
+    if (uploader.current && uploader.current.pendingCount() > 0) {
+      const uploaded = await uploader.current.uploadAll();
+      if (!uploaded) {
+        toast.error('Fix the photos that failed, then complete the visit.');
+        return;
+      }
+    }
+
     const next = await completeSiteVisitAction(null, formData);
     setResult(next);
 
@@ -396,7 +416,24 @@ export function CompleteVisitDialog({
             />
           </PendingFieldset>
 
-          <SubmitButton fullWidth>Complete visit</SubmitButton>
+          {photoUploadMaxSizeMb ? (
+            <div className="border-t border-line pt-4">
+              <FileUploader
+                ref={uploader}
+                category="SITE_VISIT_ATTACHMENT"
+                siteVisitId={siteVisitId}
+                maxSizeMb={photoUploadMaxSizeMb}
+                cameraCapture
+                multiple
+                maxFiles={10}
+                hideAction
+                label="Photo evidence"
+                helpText="Optional — up to 10 photos from the visit. They upload when you complete it."
+              />
+            </div>
+          ) : null}
+
+          <SubmitButton fullWidth>{triggerLabel}</SubmitButton>
         </form>
       </DialogContent>
     </Dialog>

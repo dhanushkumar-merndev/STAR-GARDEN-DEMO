@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { notify } from '@/lib/notifications';
+import { notifyBatch, type NotifyParams } from '@/lib/notifications';
 import { getSettings } from '@/lib/settings';
 
 /**
@@ -42,28 +42,64 @@ export async function runReminders(): Promise<ReminderRun> {
     tasksOverdue: 0,
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* 1. Follow-ups approaching their due time                                */
-  /* ---------------------------------------------------------------------- */
-
   const dueSoonCutoff = new Date(
     now.getTime() + settings.followUpReminderLeadHours * 3_600_000,
   ).toISOString();
+  const designCutoff = new Date(
+    now.getTime() + settings.designDueReminderLeadHours * 3_600_000,
+  ).toISOString();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
 
-  const { data: dueSoon } = await admin
-    .from('follow_ups')
-    .select('id, title, assigned_to, lead_id, due_at, leads!follow_ups_lead_id_fkey(lead_code)')
-    .in('status', ['OPEN'])
-    // Automatic callbacks alert at their due time, not immediately through the
-    // normal configurable "due soon" window.
-    .eq('is_automatic', false)
-    .gte('due_at', now.toISOString())
-    .lte('due_at', dueSoonCutoff)
-    .limit(500);
+  // Independent reminder sources are read together. The bounded result size
+  // keeps one cron run predictable; hourly/daily dedupe makes retries safe.
+  const [dueSoonResult, overdueResult, designsResult, tasksResult] = await Promise.all([
+    admin
+      .from('follow_ups')
+      .select('id, title, assigned_to, lead_id, due_at, leads!follow_ups_lead_id_fkey(lead_code)')
+      .in('status', ['OPEN'])
+      .eq('is_automatic', false)
+      .gte('due_at', now.toISOString())
+      .lte('due_at', dueSoonCutoff)
+      .order('due_at')
+      .limit(1000),
+    admin
+      .from('follow_ups')
+      .select('id, title, assigned_to, lead_id, due_at, status, leads!follow_ups_lead_id_fkey(lead_code)')
+      .in('status', ['OPEN', 'OVERDUE'])
+      .lt('due_at', now.toISOString())
+      .order('due_at')
+      .limit(1000),
+    admin
+      .from('design_projects')
+      .select('id, due_at, assigned_designer_id, lead_id, leads!design_projects_lead_id_fkey(lead_code, assigned_bdm_id)')
+      .not('due_at', 'is', null)
+      .not('status', 'in', '("APPROVED","CANCELLED")')
+      .lte('due_at', designCutoff)
+      .order('due_at')
+      .limit(1000),
+    admin
+      .from('execution_tasks')
+      .select('id, title, assigned_to, due_at')
+      .not('due_at', 'is', null)
+      .not('status', 'in', '("COMPLETED","CANCELLED")')
+      .lte('due_at', endOfToday)
+      .order('due_at')
+      .limit(1000),
+  ]);
 
-  for (const row of dueSoon ?? []) {
+  const queryError =
+    dueSoonResult.error ?? overdueResult.error ?? designsResult.error ?? tasksResult.error;
+  if (queryError) throw queryError;
+
+  const dueSoon = dueSoonResult.data ?? [];
+  const overdue = overdueResult.data ?? [];
+  const designs = designsResult.data ?? [];
+  const tasks = tasksResult.data ?? [];
+  const notifications: NotifyParams[] = [];
+
+  for (const row of dueSoon) {
     const leadCode = (row.leads as unknown as { lead_code: string } | null)?.lead_code ?? '';
-    await notify({
+    notifications.push({
       userId: row.assigned_to,
       type: 'FOLLOW_UP_DUE_SOON',
       title: 'Follow-up due soon',
@@ -71,32 +107,13 @@ export async function runReminders(): Promise<ReminderRun> {
       entityType: 'follow_up',
       entityId: row.id,
     });
-    result.followUpsDueSoon += 1;
   }
+  result.followUpsDueSoon = dueSoon.length;
 
-  /* ---------------------------------------------------------------------- */
-  /* 2. Follow-ups past due                                                  */
-  /* ---------------------------------------------------------------------- */
-
-  const { data: overdue } = await admin
-    .from('follow_ups')
-    .select('id, title, assigned_to, lead_id, due_at, status, leads!follow_ups_lead_id_fkey(lead_code)')
-    .in('status', ['OPEN', 'OVERDUE'])
-    .lt('due_at', now.toISOString())
-    .limit(500);
-
-  const toMarkOverdue = (overdue ?? []).filter((r) => r.status === 'OPEN').map((r) => r.id);
-
-  if (toMarkOverdue.length > 0) {
-    // OVERDUE is a real state in §9.5, not just a rendering flag, so the row is
-    // moved rather than left OPEN and coloured red in the UI.
-    await admin.from('follow_ups').update({ status: 'OVERDUE' }).in('id', toMarkOverdue);
-    result.followUpsMarkedOverdue = toMarkOverdue.length;
-  }
-
-  for (const row of overdue ?? []) {
+  const toMarkOverdue = overdue.filter((row) => row.status === 'OPEN').map((row) => row.id);
+  for (const row of overdue) {
     const leadCode = (row.leads as unknown as { lead_code: string } | null)?.lead_code ?? '';
-    await notify({
+    notifications.push({
       userId: row.assigned_to,
       type: 'FOLLOW_UP_OVERDUE',
       title: 'Follow-up overdue',
@@ -104,34 +121,16 @@ export async function runReminders(): Promise<ReminderRun> {
       entityType: 'follow_up',
       entityId: row.id,
     });
-    result.followUpsOverdue += 1;
   }
+  result.followUpsOverdue = overdue.length;
 
-  /* ---------------------------------------------------------------------- */
-  /* 3. Designs due / overdue                                                */
-  /* ---------------------------------------------------------------------- */
-
-  const designCutoff = new Date(
-    now.getTime() + settings.designDueReminderLeadHours * 3_600_000,
-  ).toISOString();
-
-  const { data: designs } = await admin
-    .from('design_projects')
-    .select('id, due_at, assigned_designer_id, lead_id, leads!design_projects_lead_id_fkey(lead_code, assigned_bdm_id)')
-    .not('due_at', 'is', null)
-    .not('status', 'in', '("APPROVED","CANCELLED")')
-    .lte('due_at', designCutoff)
-    .limit(500);
-
-  for (const project of designs ?? []) {
+  for (const project of designs) {
     const lead = project.leads as unknown as {
       lead_code: string;
       assigned_bdm_id: string | null;
     } | null;
-
     const isOverdue = project.due_at !== null && new Date(project.due_at) < now;
-
-    await notify({
+    notifications.push({
       userId: project.assigned_designer_id,
       type: isOverdue ? 'DESIGN_OVERDUE' : 'DESIGN_DUE_SOON',
       title: isOverdue ? 'Design overdue' : 'Design due soon',
@@ -139,10 +138,8 @@ export async function runReminders(): Promise<ReminderRun> {
       entityType: 'design_project',
       entityId: project.id,
     });
-
     if (isOverdue) {
-      // The BDM owns the customer relationship, so they need to know too.
-      await notify({
+      notifications.push({
         userId: lead?.assigned_bdm_id,
         type: 'DESIGN_OVERDUE',
         title: 'Design overdue',
@@ -151,28 +148,12 @@ export async function runReminders(): Promise<ReminderRun> {
         entityId: project.id,
       });
       result.designsOverdue += 1;
-    } else {
-      result.designsDueSoon += 1;
-    }
+    } else result.designsDueSoon += 1;
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* 4. Execution tasks due / overdue                                        */
-  /* ---------------------------------------------------------------------- */
-
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-
-  const { data: tasks } = await admin
-    .from('execution_tasks')
-    .select('id, title, assigned_to, due_at')
-    .not('due_at', 'is', null)
-    .not('status', 'in', '("COMPLETED","CANCELLED")')
-    .lte('due_at', endOfToday)
-    .limit(500);
-
-  for (const task of tasks ?? []) {
+  for (const task of tasks) {
     const isOverdue = task.due_at !== null && new Date(task.due_at) < now;
-    await notify({
+    notifications.push({
       userId: task.assigned_to,
       type: isOverdue ? 'EXECUTION_TASK_OVERDUE' : 'EXECUTION_TASK_DUE',
       title: isOverdue ? 'Task overdue' : 'Task due today',
@@ -184,6 +165,13 @@ export async function runReminders(): Promise<ReminderRun> {
     if (isOverdue) result.tasksOverdue += 1;
     else result.tasksDue += 1;
   }
+
+  const overdueUpdate = toMarkOverdue.length > 0
+    ? admin.from('follow_ups').update({ status: 'OVERDUE' }).in('id', toMarkOverdue)
+    : Promise.resolve({ error: null });
+  const [, updateResult] = await Promise.all([notifyBatch(notifications), overdueUpdate]);
+  if (updateResult.error) throw updateResult.error;
+  result.followUpsMarkedOverdue = toMarkOverdue.length;
 
   return result;
 }

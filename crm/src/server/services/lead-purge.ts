@@ -9,15 +9,99 @@ import { sendEmail } from '@/lib/email';
 import type { SessionUser } from '@/lib/auth/session';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
-const MAX_LEADS = 100;
+export const MAX_LEADS_PER_PURGE = 100;
+const MAX_LEADS = MAX_LEADS_PER_PURGE;
+
+/**
+ * Where the deletion code goes — always, whoever asked for it.
+ *
+ * The point of the second factor is that the person pressing delete is not the
+ * only person who has to agree. Mailing the code to the requester's own inbox
+ * made it a formality any one Admin could complete alone; sending it to the
+ * business owner means a permanent, irreversible deletion needs two people.
+ *
+ * Overridable by environment so a staging deployment does not mail the owner,
+ * but it is never derived from the session.
+ */
+export const PURGE_OTP_RECIPIENT =
+  process.env.LEAD_PURGE_OTP_EMAIL?.trim() || 'abhi@stargardens.in';
+
+export interface PurgeCandidate {
+  id: string;
+  customer_name: string;
+  mobile_country_code: string;
+  mobile_normalized: string;
+  email: string | null;
+  status: string;
+  source: string;
+}
+
+/**
+ * One page of leads that could be purged.
+ *
+ * Paged and searched on the server: the dialog used to load a flat hundred, so
+ * on a database of ten thousand the other 9,900 were simply unreachable — and
+ * the one lead someone needed to remove was, by definition, unlikely to be in
+ * the most recent hundred.
+ */
+export async function listPurgeCandidates(
+  user: SessionUser,
+  options: { q?: string; page?: number; pageSize?: number } = {},
+): Promise<{ items: PurgeCandidate[]; total: number; page: number; pageSize: number }> {
+  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Admin access is required.');
+
+  const admin = createAdminClient() as any;
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = Math.min(50, Math.max(5, options.pageSize ?? 20));
+  const from = (page - 1) * pageSize;
+
+  let query = admin
+    .from('leads')
+    .select('id, customer_name, mobile_country_code, mobile_normalized, email, status, source', {
+      count: 'exact',
+    });
+
+  const search = options.q?.trim();
+  if (search) {
+    const digits = search.replace(/\D/g, '');
+    const escaped = search.replace(/[%_,]/g, ' ');
+    query =
+      digits.length >= 4
+        ? query.or(
+            `mobile_normalized.ilike.%${digits}%,customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%`,
+          )
+        : query.or(
+            `customer_name.ilike.%${escaped}%,lead_code.ilike.%${escaped}%,email.ilike.%${escaped}%`,
+          );
+  }
+
+  const { data, count, error } = await query
+    .order('created_at', { ascending: false })
+    .range(from, from + pageSize - 1);
+
+  if (error) throw new AppError('INTERNAL', 'Could not load leads.', { cause: error });
+
+  return { items: (data ?? []) as PurgeCandidate[], total: count ?? 0, page, pageSize };
+}
 
 const hashCode = (challengeId: string, code: string) =>
   createHash('sha256').update(`${challengeId}:${code}`).digest('hex');
 
 export async function requestLeadPurgeOtp(user: SessionUser, leadIds: string[]) {
   if (!user.isAdmin || !user.email) throw new AppError('FORBIDDEN', 'An Admin email is required.');
-  const ids = [...new Set(leadIds)].slice(0, MAX_LEADS);
-  if (!ids.length) throw new AppError('VALIDATION', 'Select at least one lead.');
+  const unique = [...new Set(leadIds)];
+  if (!unique.length) throw new AppError('VALIDATION', 'Select at least one lead.');
+
+  // Refuse rather than silently truncate. The old `.slice()` would have taken
+  // the first hundred of a larger selection and reported success, leaving the
+  // rest in place with nobody told which.
+  if (unique.length > MAX_LEADS) {
+    throw new AppError(
+      'VALIDATION',
+      `Select up to ${MAX_LEADS} leads at a time. You have ${unique.length} selected.`,
+    );
+  }
+  const ids = unique;
 
   const admin = createAdminClient() as any;
   const { data: leads, error: leadError } = await admin
@@ -43,9 +127,9 @@ export async function requestLeadPurgeOtp(user: SessionUser, leadIds: string[]) 
   });
   if (error) throw new AppError('INTERNAL', 'Could not create deletion verification.', { cause: error });
 
-  const rendered = purgeOtpEmail(code, ids.length);
+  const rendered = purgeOtpEmail(code, ids.length, user.profile.full_name, user.email);
   const sent = await sendEmail({
-    to: user.email,
+    to: PURGE_OTP_RECIPIENT,
     ...rendered,
     emailType: 'security.lead_purge_otp',
     relatedEntityType: 'lead_batch',
@@ -55,7 +139,10 @@ export async function requestLeadPurgeOtp(user: SessionUser, leadIds: string[]) 
     throw new AppError('INTERNAL', sent.error ?? 'Could not email the verification code.');
   }
 
-  return { challengeId, maskedEmail: maskEmail(user.email), expiresAt };
+  // The real address, not a masked one: it is a fixed internal mailbox every
+  // Admin already knows, and naming it is the whole instruction — "ask Abhishek
+  // for the code" is only actionable if the screen says where it went.
+  return { challengeId, sentTo: PURGE_OTP_RECIPIENT, expiresAt };
 }
 
 export async function verifyAndPurgeLeads(user: SessionUser, challengeId: string, code: string) {
@@ -115,17 +202,22 @@ async function getLeadObjectKeys(admin: any, leadIds: string[]): Promise<string[
   return [...new Set((data ?? []).map((row: any) => row.object_key))] as string[];
 }
 
-function maskEmail(email: string) {
-  const [name = '', domain = ''] = email.split('@');
-  return `${name.slice(0, 2)}${'*'.repeat(Math.max(2, name.length - 2))}@${domain}`;
-}
 
-function purgeOtpEmail(code: string, count: number) {
-  const subject = 'Confirm permanent lead deletion — Star Gardens';
-  const text = `Your verification code is ${code}. It expires in 10 minutes. This permanently deletes ${count} selected lead${count === 1 ? '' : 's'} and their CRM history. If you did not request this, do not share the code.`;
+/**
+ * Names the requester, because the recipient is usually not them.
+ *
+ * The code now goes to the owner's mailbox whoever pressed the button, so "if
+ * you did not request this, ignore it" is the wrong instruction — the owner
+ * never requests it. They need to know who is asking and what for, so they can
+ * decide whether to hand the code over.
+ */
+function purgeOtpEmail(code: string, count: number, requestedBy: string, requesterEmail?: string) {
+  const who = requesterEmail ? `${requestedBy} (${requesterEmail})` : requestedBy;
+  const subject = 'Approve permanent lead deletion — Star Gardens';
+  const text = `${who} is asking to permanently delete ${count} lead${count === 1 ? '' : 's'} and all their CRM history. Verification code: ${code}. It expires in 10 minutes. Only share it if you agree to the deletion — it cannot be undone.`;
   return {
     subject,
     text,
-    html: `<div style="font-family:Arial,sans-serif;max-width:560px"><h2>Permanent deletion verification</h2><p>Use this code to permanently delete <strong>${count}</strong> selected lead${count === 1 ? '' : 's'} and their CRM history:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px">${code}</p><p>The code expires in 10 minutes. If you did not request this, do not share the code.</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px"><h2>Approve permanent deletion</h2><p><strong>${who}</strong> is asking to permanently delete <strong>${count}</strong> lead${count === 1 ? '' : 's'} and all of their CRM history — calls, follow-ups, visits, designs, execution records and stored files.</p><p style="font-size:30px;font-weight:700;letter-spacing:6px">${code}</p><p>The code expires in 10 minutes. Only share it if you agree to the deletion — <strong>it cannot be undone</strong>.</p></div>`,
   };
 }

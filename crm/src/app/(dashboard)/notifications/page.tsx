@@ -62,20 +62,31 @@ export default async function NotificationsPage() {
                     }
                     aria-hidden="true"
                   />
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={
-                        isUnread ? 'text-sm font-semibold text-ink' : 'text-sm text-ink-muted'
-                      }
-                    >
-                      {notification.title}
-                    </p>
-                    {notification.body ? (
-                      <p className="mt-0.5 text-sm text-ink-muted">{notification.body}</p>
-                    ) : null}
-                    <p className="mt-1 flex items-center gap-2 text-xs text-ink-subtle">
+                  {/* One row from `sm` up: title and detail on the left, kind
+                      and time on the right. The time was stranded on a third
+                      line beside the badge, which pushed every notification to
+                      three lines and made a list of ten a page of scrolling.
+                      Stacks again below `sm`, where there is no room to pair
+                      them. */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={
+                          isUnread ? 'text-sm font-semibold text-ink' : 'text-sm text-ink-muted'
+                        }
+                      >
+                        {notification.title}
+                      </p>
+                      {notification.body ? (
+                        <p className="mt-0.5 truncate text-sm text-ink-muted">{notification.body}</p>
+                      ) : null}
+                    </div>
+
+                    <p className="flex shrink-0 items-center gap-2 text-xs text-ink-subtle">
                       <Badge tone="neutral">{humanizeEnum(notification.type)}</Badge>
-                      {formatRelative(notification.created_at)}
+                      <span className="whitespace-nowrap">
+                        {formatRelative(notification.created_at)}
+                      </span>
                       {isUnread ? <span className="sr-only">Unread</span> : null}
                     </p>
                   </div>

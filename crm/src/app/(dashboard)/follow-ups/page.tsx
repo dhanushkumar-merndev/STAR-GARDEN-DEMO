@@ -7,6 +7,17 @@ import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, FollowUpStatusBadge } from '@/components/status';
 import { FollowUpCalendar, type CalendarView } from '@/components/follow-ups/weekly-calendar';
 import { formatDateTime } from '@/lib/utils/format';
+import { FilterTabs } from '@/components/ui/filter-tabs';
+import { countFollowUpsByScope } from '@/server/services/follow-ups';
+import { Pagination } from '@/components/ui/pagination';
+import { readPageParam } from '@/lib/pagination';
+import {
+  addDays,
+  endOfMonth,
+  endOfWeek,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
 
 export const metadata: Metadata = { title: 'Follow-ups' };
 
@@ -29,13 +40,37 @@ export default async function FollowUpsPage({
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'OVERDUE') as FollowUpScope;
   const view: CalendarView = params.view === 'month' ? 'month' : 'week';
+  const day =
+    typeof params.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
+      ? params.date
+      : undefined;
 
-  const [items, calendarItems] = await Promise.all([
-    listFollowUps(user, { scope, limit: 100 }),
-    // A month spans roughly four times the rows a week does, so the week's
-    // limit would silently truncate the grid.
-    listFollowUps(user, { scope: 'ALL', limit: view === 'month' ? 400 : 100 }),
+  const page = readPageParam(params);
+
+  // The same window the grid draws (weeks start on Monday in both views), so
+  // the calendar query asks for exactly the rows it will render. Bounding it
+  // by a row limit instead used to drop work off the end of a busy month.
+  const today = new Date();
+  const calendarStart =
+    view === 'month'
+      ? startOfWeek(startOfMonth(today), { weekStartsOn: 1 })
+      : startOfWeek(today, { weekStartsOn: 1 });
+  const calendarEnd =
+    view === 'month'
+      ? endOfWeek(endOfMonth(today), { weekStartsOn: 1 })
+      : addDays(calendarStart, 6);
+
+  const [{ items, total, pageSize }, calendar, counts] = await Promise.all([
+    listFollowUps(user, { scope, day, page }),
+    listFollowUps(user, {
+      scope: 'ALL',
+      from: calendarStart.toISOString(),
+      to: calendarEnd.toISOString(),
+      limit: 500,
+    }),
+    countFollowUpsByScope(user, SCOPES.map((option) => option.value)),
   ]);
+  const calendarItems = calendar.items;
 
   return (
     <>
@@ -44,39 +79,54 @@ export default async function FollowUpsPage({
         subtitle={user.isAdmin ? 'Everyone’s follow-ups' : 'Assigned to you'}
       />
 
-      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
-        {SCOPES.map((option) => {
-          const active = option.value === scope;
-          return (
-            <Link
-              key={option.value}
-              // Carries the calendar view, so switching scope does not silently
-              // drop the reader back to the week grid (§16).
-              href={`/follow-ups?scope=${option.value}&view=${view}`}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <FilterTabs
+        options={SCOPES.map((option) => ({ ...option, count: counts[option.value] ?? 0 }))}
+        value={scope}
+        label="Filter follow-ups"
+        hrefFor={(value) => `/follow-ups?scope=${value}&view=${view}`}
+        className="mb-4"
+      />
 
-      <FollowUpCalendar items={calendarItems} view={view} scope={scope} />
+      <FollowUpCalendar items={calendarItems} view={view} scope={scope} selectedDate={day} />
 
       <Card>
+        {/* A filtered list that does not say so is the reason people think a
+            record has vanished. Named, and one click to undo. */}
+        {day ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <p className="text-sm text-ink">
+              Showing{' '}
+              <span className="font-semibold">
+                {new Date(`${day}T00:00:00`).toLocaleDateString('en-IN', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </span>
+              {' · '}
+              <span className="text-ink-muted">
+                {items.length} follow-up{items.length === 1 ? '' : 's'}
+              </span>
+            </p>
+            <Link
+              href={`/follow-ups?scope=${scope}&view=${view}`}
+              className="text-sm font-medium text-brand-700 hover:underline"
+            >
+              Reset
+            </Link>
+          </div>
+        ) : null}
+
         {items.length === 0 ? (
           <EmptyState
             icon={<LuClipboardList className="size-8" />}
-            title={scope === 'OVERDUE' ? 'Nothing overdue' : 'Nothing here'}
+            title={day ? 'Nothing on this day' : scope === 'OVERDUE' ? 'Nothing overdue' : 'Nothing here'}
             description={
-              scope === 'OVERDUE'
-                ? 'Your follow-ups are up to date.'
-                : 'Follow-ups you create from a lead appear here.'
+              day
+                ? 'Pick another date on the calendar, or reset to see them all.'
+                : scope === 'OVERDUE'
+                  ? 'Your follow-ups are up to date.'
+                  : 'Follow-ups you create from a lead appear here.'
             }
           />
         ) : (
@@ -100,7 +150,11 @@ export default async function FollowUpsPage({
                       ) : null}
                     </div>
 
-                    <div className="flex flex-col items-end gap-1.5">
+                    {/* Due date and the action that answers it, stacked on the
+                        right. The button used to sit on its own line under the
+                        notes, which left a wide empty band beside the badge and
+                        put the two halves of one decision far apart. */}
+                    <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
                       {open ? (
                         <DueBadge value={followUp.due_at} />
                       ) : (
@@ -109,30 +163,33 @@ export default async function FollowUpsPage({
                       {followUp.completed_at ? (
                         <Badge tone="neutral">Done {formatDateTime(followUp.completed_at)}</Badge>
                       ) : null}
-                    </div>
-                  </div>
 
-                  {open ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {followUp.lead ? (
+                      {open && followUp.lead ? (
                         <Link
                           // Opens on the lead's follow-up list rather than its
                           // default tab. Call Customer sits in the lead header,
                           // above the tabs, so it stays one tap away either way.
                           href={`/leads/${followUp.lead_id}?tab=follow-ups`}
-                          className="tap inline-flex items-center rounded-lg border border-line px-3 text-sm font-medium text-brand-700"
+                          className="tap mt-0.5 inline-flex items-center justify-center rounded-lg border border-line px-3 text-sm font-medium text-brand-700 hover:bg-brand-50"
                         >
                           Open lead to call customer
                         </Link>
                       ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </Card>
+      <Pagination
+        basePath="/follow-ups"
+        params={params}
+        page={page}
+        total={total}
+        pageSize={pageSize}
+      />
     </>
   );
 }

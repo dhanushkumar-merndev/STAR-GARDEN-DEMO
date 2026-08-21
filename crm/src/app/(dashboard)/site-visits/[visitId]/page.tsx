@@ -20,6 +20,7 @@ import { canWriteLead } from '@/lib/permissions';
 import { Alert, Card, CardBody, CardHeader } from '@/components/ui';
 import { SiteVisitStatusBadge } from '@/components/status';
 import { FileList } from '@/components/files/file-list';
+import { FileUploader } from '@/components/files/uploader';
 import {
   CancelVisitDialog,
   CheckInButton,
@@ -55,6 +56,9 @@ export default async function SiteVisitPage({
 
   const { visit, lead, isAttendee, attendees, files } = detail;
   const settings = await getSettings();
+  // The visit's own flag, not the current setting: a visit runs to the end in
+  // the mode it was booked in (§8.3).
+  const journeyEnabled = visit.journey_tracking_enabled;
 
   const canManage = canWriteLead(user, lead ?? { assigned_bdm_id: null });
   const canRecord = canManage || isAttendee;
@@ -126,15 +130,66 @@ export default async function SiteVisitPage({
 
       {/* The journey. Visible to everyone who can see the visit — the Admin is
           usually not an attendee, and they are the person a customer rings to
-          ask whether anybody is coming. */}
+          ask whether anybody is coming.
+
+          With journey tracking switched off in Settings the whole chain
+          collapses to one button. The card stays — a visit still needs
+          somewhere to be closed from — but it stops pretending to track a trip
+          nobody is recording. */}
       <Card>
         <CardHeader
-          title={<span className="flex items-center gap-2"><LuNavigation className="size-5 text-brand-700" />Journey to site</span>}
-          description="Track when the designer leaves and arrives."
+          title={
+            journeyEnabled ? (
+              <span className="flex items-center gap-2"><LuNavigation className="size-5 text-brand-700" />Journey to site</span>
+            ) : (
+              <span className="flex items-center gap-2"><LuClipboardList className="size-5 text-brand-700" />Visit</span>
+            )
+          }
+          description={
+            journeyEnabled
+              ? 'Track when the designer leaves and arrives.'
+              : 'Close the visit once the designer has been.'
+          }
         />
         <CardBody className="space-y-4">
-          <VisitJourney visit={visit} />
-          {isOpen && (canRecord || user.isAdmin) ? (
+          {journeyEnabled ? <VisitJourney visit={visit} /> : null}
+
+          {!journeyEnabled && isOpen ? (
+            <div className="space-y-3">
+              {canManage && visitDayArrived ? (
+                <CompleteVisitDialog
+                  siteVisitId={visit.id}
+                  triggerLabel="Site visit completed"
+                  photoUploadMaxSizeMb={settings.maxUploadSizeMb}
+                />
+              ) : null}
+
+              {/* Without a check-out dialog there is nowhere else for a
+                  designer to land, so say why the button is not theirs. */}
+              {!canManage ? (
+                <p className="text-sm text-ink-muted">
+                  An Admin closes this visit once you have been to site.
+                </p>
+              ) : !visitDayArrived ? (
+                <p className="text-sm text-ink-muted">
+                  This visit can be closed from{' '}
+                  <span className="font-medium text-ink">
+                    {formatDate(visit.scheduled_start_at)}
+                  </span>
+                  .
+                </p>
+              ) : null}
+
+              {user.isAdmin ? (
+                <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+                  <RescheduleVisitDialog siteVisitId={visit.id} />
+                  <CancelVisitDialog siteVisitId={visit.id} />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {journeyEnabled && isOpen && (canRecord || user.isAdmin) ? (
             <div className="space-y-3 border-t border-line pt-4">
               {/* Nothing may be recorded before the booked day. The server
                   refuses it either way (§7.5); this is so the designer reads a
@@ -192,6 +247,7 @@ export default async function SiteVisitPage({
       {hasVisitRecord ? <Card>
         <CardHeader title={<span className="flex items-center gap-2"><LuClipboardList className="size-5 text-brand-700" />Visit record</span>} />
         <CardBody className="space-y-3 text-sm">
+          {journeyEnabled ? (
           <dl className="grid gap-3 sm:grid-cols-2 sm:divide-x sm:divide-line">
             <div className="flex items-center gap-3">
               <LuLogIn className="size-5 shrink-0 text-brand-700" />
@@ -212,8 +268,9 @@ export default async function SiteVisitPage({
               </div>
             </div>
           </dl>
+          ) : null}
 
-          {visit.check_in_latitude != null && visit.check_in_longitude != null ? (
+          {journeyEnabled && visit.check_in_latitude != null && visit.check_in_longitude != null ? (
             <LocationLink
               label="Check-in location"
               latitude={visit.check_in_latitude}
@@ -271,12 +328,36 @@ export default async function SiteVisitPage({
           screen with nothing to say which to use. */}
       <Card>
         <CardHeader title="Photos and attachments" />
-        <CardBody>
+        <CardBody className="space-y-4">
           <FileList
             files={files}
             canArchive={user.isAdmin}
-            emptyMessage="No photos yet. Site photos are added when the designer checks out."
+            emptyMessage={
+              journeyEnabled
+                ? 'No photos yet. Site photos are added when the designer checks out.'
+                : 'No photos yet. Add them here, or while completing the visit.'
+            }
           />
+
+          {/* With journey tracking on, photos arrive with check-out and a
+              second uploader here would be two controls for one job. With it
+              off there is no check-out, so this is where photos live — and it
+              stays available after completion, because the phone that took
+              them is not always the one that closed the visit. */}
+          {!journeyEnabled && canRecord ? (
+            <div className="border-t border-line pt-4">
+              <FileUploader
+                category="SITE_VISIT_ATTACHMENT"
+                siteVisitId={visit.id}
+                maxSizeMb={settings.maxUploadSizeMb}
+                cameraCapture
+                multiple
+                maxFiles={10}
+                label="Add photos"
+                helpText="Take photos or choose from the gallery — up to 10 at a time."
+              />
+            </div>
+          ) : null}
         </CardBody>
       </Card>
     </div>

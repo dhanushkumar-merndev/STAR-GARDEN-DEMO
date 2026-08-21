@@ -174,6 +174,9 @@ export type ProfileRow = {
   is_active: boolean;
   approved_at: string | null;
   approved_by: string | null;
+  /** Filed away by an Admin. Always accompanied by `is_active: false`. */
+  archived_at: string | null;
+  archived_by: string | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
@@ -272,6 +275,11 @@ export type SiteVisitRow = {
   /** The landscape designer who attends — and who then owns the design. */
   assigned_designer_id: string | null;
   journey_status: VisitJourneyStatus;
+  /**
+   * Whether this visit runs the journey chain. Copied from the app setting
+   * when it was booked, so changing the setting never re-shapes a live visit.
+   */
+  journey_tracking_enabled: boolean;
   journey_started_at: string | null;
   journey_start_latitude: number | null;
   journey_start_longitude: number | null;
@@ -1023,6 +1031,62 @@ export type Database = {
       };
       admin_dashboard_followup_member_kpis: {
         Args: { p_from: string; p_to: string };
+        Returns: Json;
+      };
+      follow_up_scope_counts: {
+        Args: {
+          p_assigned_to: string | null;
+          p_now: string;
+          p_start_today: string;
+          p_end_today: string;
+        };
+        Returns: Json;
+      };
+      site_visit_scope_counts: {
+        Args: { p_now: string; p_start_today: string; p_end_today: string };
+        Returns: Json;
+      };
+      design_project_scope_counts: {
+        Args: {
+          p_designer_id: string | null;
+          p_current_user_id: string;
+          p_due_cutoff: string;
+        };
+        Returns: Json;
+      };
+      execution_project_scope_counts: {
+        Args: { p_current_user_id: string };
+        Returns: Json;
+      };
+      execution_work_counts: {
+        Args: { p_task_assignee: string | null; p_now: string; p_end_today: string };
+        Returns: Json;
+      };
+      lead_stage_counts: {
+        Args: {
+          p_owner_id: string | null;
+          p_scope_unassigned: boolean;
+          p_no_next_action: boolean;
+          p_source: string | null;
+          p_assigned_to: string | null;
+          p_assigned_unassigned: boolean;
+          p_search: string | null;
+          p_search_digits: string | null;
+          p_search_has_digits: boolean;
+        };
+        Returns: Json;
+      };
+      check_rate_limit: {
+        Args: {
+          p_bucket: string;
+          p_identifier: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: Json;
+      };
+      insert_notifications_dedup: {
+        Args: { p_rows: Json };
         Returns: Json;
       };
       admin_dashboard_site_visit_details: {

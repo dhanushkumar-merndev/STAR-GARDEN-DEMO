@@ -34,6 +34,15 @@ function istBoundary(date: string, endExclusive = false): string {
   return new Date(Date.UTC(year, month - 1, day + (endExclusive ? 1 : 0), -5, -30)).toISOString();
 }
 
+/**
+ * How far back the dashboard looks when nobody has chosen a range.
+ *
+ * Thirty days, not ninety: the charts are read as "how are we doing lately",
+ * and a quarter of history flattens the last fortnight into the left-hand edge
+ * of the plot. Anyone who wants the quarter can still pick it.
+ */
+export const DEFAULT_ANALYTICS_DAYS = 30;
+
 function resolveAnalyticsRange(input: DashboardDateRange) {
   // Automatic boundaries are stable for the whole hour, otherwise using the
   // current millisecond would create a different database-cache key per request.
@@ -41,17 +50,34 @@ function resolveAnalyticsRange(input: DashboardDateRange) {
   nextHour.setMinutes(0, 0, 0);
   nextHour.setHours(nextHour.getHours() + 1);
 
+  const span = DEFAULT_ANALYTICS_DAYS * 86_400_000;
+
   const to = validDate(input.to) ? istBoundary(input.to, true) : nextHour.toISOString();
   const from = validDate(input.from)
     ? istBoundary(input.from)
-    : new Date(new Date(to).getTime() - 90 * 86_400_000).toISOString();
+    : new Date(new Date(to).getTime() - span).toISOString();
 
   if (new Date(to) > new Date(from)) return { from, to };
 
   return {
-    from: new Date(nextHour.getTime() - 90 * 86_400_000).toISOString(),
+    from: new Date(nextHour.getTime() - span).toISOString(),
     to: nextHour.toISOString(),
   };
+}
+
+/**
+ * The default range as two `yyyy-mm-dd` IST dates.
+ *
+ * The date inputs used to sit empty while the caption underneath named a range
+ * the dashboard was actually using — so the controls disagreed with the data.
+ * They are filled from this instead, and Reset returns them to it.
+ */
+export function defaultAnalyticsDates(): { from: string; to: string } {
+  const istToday = new Date(Date.now() + 5.5 * 3_600_000);
+  const istFrom = new Date(istToday.getTime() - DEFAULT_ANALYTICS_DAYS * 86_400_000);
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+
+  return { from: iso(istFrom), to: iso(istToday) };
 }
 
 export interface AdminDashboard {
@@ -349,7 +375,7 @@ export async function getBdmDashboard(user: SessionUser): Promise<BdmDashboard> 
       mine().not('status', 'in', '("LOST","CLOSED")'),
       mine().is('next_action_at', null).not('status', 'in', '("LOST","CLOSED")'),
       followUpCounts(user),
-      listSiteVisits(user, { scope: 'TODAY', limit: 100 }),
+      listSiteVisits(user, { scope: 'TODAY', limit: 100 }).then((r) => r.items),
       supabase
         .from('design_projects')
         .select('id', { count: 'exact', head: true })

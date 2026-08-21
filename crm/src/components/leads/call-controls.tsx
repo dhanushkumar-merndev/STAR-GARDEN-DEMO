@@ -11,6 +11,7 @@ import { FormError, PendingFieldset, SubmitButton, fieldError } from '@/componen
 import { logCallAction, recordCallAttemptAction } from '@/server/actions/leads';
 import type { ActionResult } from '@/lib/errors';
 import type { CallOutcome } from '@/types/database';
+import { cn } from '@/lib/utils/cn';
 
 /** Matches the `lg` breakpoint everything else in this app treats as "desktop". */
 function isDesktopViewport(): boolean {
@@ -38,8 +39,11 @@ const OTHER_OUTCOMES: { value: CallOutcome; label: string }[] = [
 
 export function CallCustomerButton({
   leadId,
+  className,
 }: {
   leadId: string;
+  /** Lets the caller size the button — the lead page splits the row in two. */
+  className?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -74,9 +78,12 @@ export function CallCustomerButton({
 
   return (
     <>
-      <Button onClick={handleCall} size="lg" className="gap-2" disabled={pending}>
+      <Button onClick={handleCall} size="lg" className={cn('gap-2', className)} disabled={pending}>
         <LuPhone className="size-4.5" />
-        Call Customer
+        {/* "Call Customer" is two words wider than half a phone screen once it
+            shares the row with WhatsApp. The verb is the part that matters. */}
+        <span className="sm:hidden">Call</span>
+        <span className="hidden sm:inline">Call Customer</span>
       </Button>
       {dialHref ? (
         <ContactQrDialog
@@ -98,7 +105,7 @@ export function CallCustomerButton({
  * (which staff may not be signed into) or nothing at all, so this offers a QR
  * to continue on a phone instead — same pattern as {@link CallCustomerButton}.
  */
-export function WhatsAppCustomerButton({ href }: { href: string }) {
+export function WhatsAppCustomerButton({ href, className }: { href: string; className?: string }) {
   const [qrOpen, setQrOpen] = React.useState(false);
 
   function handleClick(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -117,10 +124,14 @@ export function WhatsAppCustomerButton({ href }: { href: string }) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={handleClick}
-        className="flex h-11 items-center justify-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-100"
+        className={cn(
+          'flex h-12 items-center justify-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-100',
+          className,
+        )}
       >
         <LuMessageCircle className="size-4" />
-        WhatsApp customer
+        <span className="sm:hidden">WhatsApp</span>
+        <span className="hidden sm:inline">WhatsApp customer</span>
       </a>
       <ContactQrDialog
         open={qrOpen}

@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { isSupabaseConfigured } from '@/lib/env';
 import { isEmailConfigured, sendEmail } from '@/lib/email';
 import { overdueWorkEmail } from '@/lib/email/templates';
-import type { NotificationType } from '@/types/database';
+import type { Json, NotificationType } from '@/types/database';
 
 /**
  * In-app notifications (AGENTS.md §13).
@@ -85,6 +85,65 @@ export async function notify(params: NotifyParams): Promise<void> {
 }
 
 /**
+ * Inserts a whole reminder/admin fan-out in one database call. The SQL helper
+ * skips only conflicting daily-dedupe rows, so one duplicate cannot abort the
+ * rest of the batch. Generic emails use one profile lookup for all recipients.
+ */
+export async function notifyBatch(params: NotifyParams[]): Promise<number> {
+  if (!isSupabaseConfigured()) return 0;
+
+  const unique = new Map<string, NotifyParams>();
+  for (const item of params) {
+    if (!item.userId) continue;
+    unique.set(notificationKey(item.userId, item.type, item.entityId), item);
+  }
+  if (unique.size === 0) return 0;
+
+  try {
+    const admin = createAdminClient();
+    const rows = [...unique.values()].map((item) => ({
+      user_id: item.userId as string,
+      type: item.type,
+      title: item.title,
+      body: item.body ?? null,
+      entity_type: item.entityType ?? null,
+      entity_id: item.entityId ?? null,
+    }));
+    const { data, error } = await admin.rpc('insert_notifications_dedup', {
+      p_rows: rows as Json,
+    });
+
+    if (error) {
+      // A rolling deployment can run the app before its RPC migration. Fall
+      // back to the established one-at-a-time path so no reminder is lost.
+      console.warn('[notifications] batch RPC unavailable; using notify fallback', error);
+      const fallback = [...unique.values()];
+      await runConcurrently(fallback.map((item) => () => notify(item)), 12);
+      return fallback.length;
+    }
+
+    const insertedKeys = new Set(
+      (Array.isArray(data) ? data : []).flatMap((row) => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+        const userId = typeof row.user_id === 'string' ? row.user_id : null;
+        const type = typeof row.type === 'string' ? row.type : null;
+        const entityId = typeof row.entity_id === 'string' ? row.entity_id : null;
+        return userId && type ? [notificationKey(userId, type, entityId)] : [];
+      }),
+    );
+    const inserted = [...unique.entries()]
+      .filter(([key]) => insertedKeys.has(key))
+      .map(([, item]) => item);
+
+    await deliverBatchEmails(inserted);
+    return inserted.length;
+  } catch (error) {
+    console.error('[notifications] unexpected batch failure', error);
+    return 0;
+  }
+}
+
+/**
  * Mirrors a notification to email.
  *
  * Never throws and never blocks the caller — the in-app row is already written
@@ -107,25 +166,79 @@ async function deliverEmail(params: NotifyParams): Promise<void> {
 
     if (!profile?.email || !profile.is_active) return;
 
-    const rendered = overdueWorkEmail({
-      heading: params.title,
-      title: params.body ?? 'Open the CRM to see the details.',
-      detail: null,
-      path: emailPath(params),
-    });
-
-    await sendEmail({
-      to: profile.email,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-      emailType: `notification.${params.type.toLowerCase()}`,
-      relatedEntityType: params.entityType ?? null,
-      relatedEntityId: params.entityId ?? null,
-    });
+    await sendNotificationEmail(profile.email, params);
   } catch (error) {
     console.error('[notifications] email delivery failed', error);
   }
+}
+
+async function deliverBatchEmails(params: NotifyParams[]): Promise<void> {
+  const eligible = params.filter(
+    (item) => item.userId && !item.skipEmail && EMAIL_WORTHY.has(item.type),
+  );
+  if (!isEmailConfigured() || eligible.length === 0) return;
+
+  try {
+    const admin = createAdminClient();
+    const ids = [...new Set(eligible.map((item) => item.userId as string))];
+    const { data: profiles, error } = await admin
+      .from('profiles')
+      .select('id, email')
+      .in('id', ids)
+      .eq('is_active', true);
+    if (error) throw error;
+
+    const emails = new Map(
+      (profiles ?? []).flatMap((profile) =>
+        profile.email ? [[profile.id, profile.email] as const] : [],
+      ),
+    );
+    const jobs = eligible.flatMap((item) => {
+      const email = item.userId ? emails.get(item.userId) : null;
+      return email ? [() => sendNotificationEmail(email, item)] : [];
+    });
+    await runConcurrently(jobs, 8);
+  } catch (error) {
+    console.error('[notifications] batch email delivery failed', error);
+  }
+}
+
+async function sendNotificationEmail(email: string, params: NotifyParams): Promise<void> {
+  const rendered = overdueWorkEmail({
+    heading: params.title,
+    title: params.body ?? 'Open the CRM to see the details.',
+    detail: null,
+    path: emailPath(params),
+  });
+
+  await sendEmail({
+    to: email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    emailType: `notification.${params.type.toLowerCase()}`,
+    relatedEntityType: params.entityType ?? null,
+    relatedEntityId: params.entityId ?? null,
+  });
+}
+
+function notificationKey(
+  userId: string,
+  type: string,
+  entityId: string | null | undefined,
+): string {
+  return `${userId}\u0000${type}\u0000${entityId ?? ''}`;
+}
+
+async function runConcurrently(jobs: (() => Promise<unknown>)[], limit: number): Promise<void> {
+  let next = 0;
+  async function worker() {
+    while (next < jobs.length) {
+      const job = jobs[next++];
+      if (job) await job();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, () => worker()));
 }
 
 function emailPath(params: NotifyParams): string {

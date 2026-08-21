@@ -6,6 +6,10 @@ import { listSiteVisits } from '@/server/services/site-visits';
 import { Card, EmptyState, PageHeader } from '@/components/ui';
 import { SiteVisitStatusBadge } from '@/components/status';
 import { formatDateTime } from '@/lib/utils/format';
+import { FilterTabs } from '@/components/ui/filter-tabs';
+import { countSiteVisitsByScope } from '@/server/services/site-visits';
+import { Pagination } from '@/components/ui/pagination';
+import { readPageParam } from '@/lib/pagination';
 
 export const metadata: Metadata = { title: 'Site visits' };
 
@@ -28,7 +32,12 @@ export default async function SiteVisitsPage({
   const scope = (typeof params.scope === 'string' ? params.scope : 'UPCOMING') as
     (typeof SCOPES)[number]['value'];
 
-  const visits = await listSiteVisits(user, { scope, limit: 100 });
+  const page = readPageParam(params);
+
+  const [{ items: visits, total, pageSize }, counts] = await Promise.all([
+    listSiteVisits(user, { scope, page }),
+    countSiteVisitsByScope(SCOPES.map((option) => option.value)),
+  ]);
 
   const grouped = visits.reduce<Record<string, typeof visits>>((acc, visit) => {
     const day = new Date(visit.scheduled_start_at).toLocaleDateString('en-IN', {
@@ -43,27 +52,15 @@ export default async function SiteVisitsPage({
 
   return (
     <>
-      <PageHeader title="Site visits" subtitle={`${visits.length} in this view`} />
+      <PageHeader title="Site visits" subtitle={`${total} in this view`} />
 
-      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
-        {SCOPES.map((option) => {
-          const active = option.value === scope;
-          return (
-            <Link
-              key={option.value}
-              href={`/site-visits?scope=${option.value}`}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <FilterTabs
+        options={SCOPES.map((option) => ({ ...option, count: counts[option.value] ?? 0 }))}
+        value={scope}
+        label="Filter site visits"
+        hrefFor={(value) => `/site-visits?scope=${value}`}
+        className="mb-4"
+      />
 
       {visits.length === 0 ? (
         <Card>
@@ -110,6 +107,14 @@ export default async function SiteVisitsPage({
           ))}
         </div>
       )}
+
+      <Pagination
+        basePath="/site-visits"
+        params={params}
+        page={page}
+        total={total}
+        pageSize={pageSize}
+      />
     </>
   );
 }

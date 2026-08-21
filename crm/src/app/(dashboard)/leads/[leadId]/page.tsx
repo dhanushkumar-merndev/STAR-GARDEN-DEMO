@@ -44,7 +44,7 @@ import { FollowUpOutcomeActions } from '@/components/leads/follow-up-actions';
 import { formatDateTime, humanizeEnum } from '@/lib/utils/format';
 import { formatMobile, maskMobile, telHref } from '@/lib/utils/phone';
 import type { CallOutcome } from '@/types/database';
-import { DetailDrawer } from '@/components/ui/detail-drawer';
+import { MobileSheet } from '@/components/ui/mobile-sheet';
 
 export const metadata: Metadata = { title: 'Lead' };
 
@@ -201,66 +201,127 @@ export default async function LeadDetailPage({
 
   return (
     <div className="space-y-4">
-      <div>
+      {/* On a phone the status rides up here, next to the back link.
+          It is one short badge on a row that was otherwise empty, and taking
+          it out of the card header leaves the name, the code and Details
+          enough width to sit on one line instead of wrapping. */}
+      <div className="flex items-center justify-between gap-3">
         <Link href="/leads" className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink">
           <LuArrowLeft className="size-4" />
           All leads
         </Link>
+        <span className="lg:hidden">
+          <LeadStatusBadge value={lead.status} />
+        </span>
       </div>
 
       {/* Identity and the three facts §16 wants first. */}
       <Card className="overflow-hidden">
         <CardBody className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-ink">
-                {lead.customer_name}
-              </h1>
-              <p className="mt-0.5 text-sm text-ink-muted">{lead.lead_code}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <DetailDrawer label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
+          {/* Stacked on a phone, one line from `lg` up.
+              On a wide screen these four blocks were four rows with a third of
+              the width empty beside each — the header pushed the tabs and the
+              actual lead content below the fold to say six short things. */}
+          <div className="space-y-3 lg:flex lg:flex-wrap lg:items-center lg:gap-x-5 lg:gap-y-2 lg:space-y-0">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
+                  {lead.customer_name}
+                </h1>
+                <p className="mt-0.5 text-sm text-ink-muted">{lead.lead_code}</p>
+              </div>
+              {/* Phone only. On a desktop these same fields are already on the page —
+                  the Details tab below shows mobile, email, location and
+                  requirement — so a slide-over there just covered the page with
+                  a copy of itself. */}
+              <MobileSheet label="Details" title="Customer information" description={lead.lead_code} icon={<LuInfo className="size-4" />}>
+                <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                  <SourceBadge value={lead.source} />
+                  {latestCallOutcome ? (
+                    <Badge tone={outcomeTone(latestCallOutcome)}>
+                      Last call: {humanizeEnum(latestCallOutcome)}
+                    </Badge>
+                  ) : null}
+                  {lead.design_required ? <Badge tone="info">Design required</Badge> : null}
+                  {lead.status === 'LOST' && lead.lost_reason ? (
+                    <Badge tone="danger">Lost: {lead.lost_reason}</Badge>
+                  ) : null}
+                </div>
                 <dl className="space-y-3 text-sm">
                   <CustomerDetail label="Customer" value={lead.customer_name} />
                   <CustomerDetail label="Mobile" value={displayMobile} href={revealedTelHref} />
                   {lead.email ? <CustomerDetail label="Email" value={lead.email} href={`mailto:${lead.email}`} /> : null}
                   <CustomerDetail label="Owner" value={owner?.full_name ?? 'Unassigned'} />
+                  <CustomerDetail
+                    label="Next action"
+                    value={
+                      lead.next_action_at ? (
+                        <DueBadge value={lead.next_action_at} />
+                      ) : (
+                        <Badge tone="warn">Nothing scheduled</Badge>
+                      )
+                    }
+                  />
                   <CustomerDetail label="Location" value={lead.site_address ?? lead.location_text ?? 'Not provided'} />
                   <CustomerDetail label="Requirement" value={lead.requirement_summary ?? 'Not provided'} multiline />
                 </dl>
-              </DetailDrawer>
-              <LeadStatusBadge value={lead.status} />
+              </MobileSheet>
             </div>
-          </div>
 
-          <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
-            <div className="flex items-baseline gap-2">
-              <dt className="shrink-0 text-ink-muted">Owner</dt>
-              <dd className="font-medium text-ink">{owner?.full_name ?? 'Unassigned'}</dd>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <dt className="shrink-0 text-ink-muted">Next action</dt>
-              <dd>
-                {lead.next_action_at ? (
-                  <DueBadge value={lead.next_action_at} />
-                ) : (
-                  <Badge tone="warn">Nothing scheduled</Badge>
-                )}
-              </dd>
-            </div>
-          </dl>
+            {/* Hidden below `lg`: Details carries all of this on a phone, and
+                repeating it here pushed Call and the tabs off the first
+                screen. The drawer trigger is `lg:hidden`, so the two swap at
+                exactly the same width — neither is ever missing. */}
+            <dl className="hidden text-sm lg:flex lg:items-center lg:gap-x-5">
+              <div className="flex items-baseline gap-2">
+                <dt className="shrink-0 text-ink-muted">Owner</dt>
+                <dd className="font-medium text-ink">{owner?.full_name ?? 'Unassigned'}</dd>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <dt className="shrink-0 text-ink-muted">Next action</dt>
+                <dd>
+                  {lead.next_action_at ? (
+                    <DueBadge value={lead.next_action_at} />
+                  ) : (
+                    <Badge tone="warn">Nothing scheduled</Badge>
+                  )}
+                </dd>
+              </div>
+            </dl>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <SourceBadge value={lead.source} />
-            {latestCallOutcome ? (
-              <Badge tone={outcomeTone(latestCallOutcome)}>
-                Last call: {humanizeEnum(latestCallOutcome)}
-              </Badge>
-            ) : null}
-            {lead.design_required ? <Badge tone="info">Design required</Badge> : null}
-            {lead.status === 'LOST' && lead.lost_reason ? (
-              <Badge tone="danger">Lost: {lead.lost_reason}</Badge>
-            ) : null}
+            <div className="hidden flex-wrap items-center gap-1.5 lg:flex">
+              <SourceBadge value={lead.source} />
+              {latestCallOutcome ? (
+                <Badge tone={outcomeTone(latestCallOutcome)}>
+                  Last call: {humanizeEnum(latestCallOutcome)}
+                </Badge>
+              ) : null}
+              {lead.design_required ? <Badge tone="info">Design required</Badge> : null}
+              {lead.status === 'LOST' && lead.lost_reason ? (
+                <Badge tone="danger">Lost: {lead.lost_reason}</Badge>
+              ) : null}
+            </div>
+
+            {/* Actions and status travel together so a single `ml-auto` ends
+                the desktop row — two competing auto margins do not stack,
+                flexbox splits the free space between them and leaves a gap in
+                the middle of the pair. Inside, `flex-1` gives Call and WhatsApp
+                half the width each on a phone, or all of it to Call alone when
+                no WhatsApp number is configured. */}
+            <div className="flex w-full items-center gap-3 pt-1 lg:ml-auto lg:w-auto lg:pt-0">
+              {writable ? (
+                <div className="flex flex-1 gap-2 lg:flex-none">
+                  <CallCustomerButton leadId={lead.id} className="flex-1 sm:flex-none sm:px-6" />
+                  {whatsappUrl ? (
+                    <WhatsAppCustomerButton href={whatsappUrl} className="flex-1 sm:flex-none sm:px-6" />
+                  ) : null}
+                </div>
+              ) : null}
+
+              <span className="hidden lg:inline-flex">
+                <LeadStatusBadge value={lead.status} />
+              </span>
+            </div>
           </div>
 
           {!lead.next_action_at && lead.status !== 'LOST' && lead.status !== 'CLOSED' ? (
@@ -278,12 +339,6 @@ export default async function LeadDetailPage({
             )
           ) : null}
 
-          {writable ? (
-            <div className="flex flex-wrap gap-2 pt-1">
-              <CallCustomerButton leadId={lead.id} />
-              {whatsappUrl ? <WhatsAppCustomerButton href={whatsappUrl} /> : null}
-            </div>
-          ) : null}
         </CardBody>
       </Card>
 
@@ -842,8 +897,9 @@ function outcomeTone(outcome: CallOutcome) {
   }
 }
 
+/** `value` takes a node so a badge can sit in the same list as a phone number. */
 function CustomerDetail({ label, value, href, multiline = false }: {
-  label: string; value: string; href?: string; multiline?: boolean;
+  label: string; value: React.ReactNode; href?: string; multiline?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-line bg-surface-muted px-3 py-2.5">

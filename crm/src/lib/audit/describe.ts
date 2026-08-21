@@ -67,6 +67,7 @@ const FIELD_LABELS: Record<string, string> = {
   applied_to_existing: 'Applied to an existing account',
   approved_design_version_id: 'Approved design',
   assigned_bdm_id: 'Assigned to',
+  archived_at: 'Archived',
   assigned_designer_id: 'Designer',
   assignees: 'Team',
   blocker_notes: 'Blocker',

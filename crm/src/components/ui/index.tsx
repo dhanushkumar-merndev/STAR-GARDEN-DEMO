@@ -64,7 +64,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
 /* -------------------------------------------------------------------------- */
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('card overflow-hidden', className)} {...props} />;
+  return <div className={cn('card w-full min-w-0 max-w-full overflow-hidden', className)} {...props} />;
 }
 
 export function CardHeader({
@@ -84,7 +84,10 @@ export function CardHeader({
         <h2 className="text-sm font-semibold break-words text-ink">{title}</h2>
         {description ? <p className="mt-0.5 text-xs text-ink-muted">{description}</p> : null}
       </div>
-      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
+      {/* `min-w-0` as well as `max-w-full`: `shrink-0` keeps the actions at
+          their natural width, and without a floor of zero a long action group
+          can hold the header — and therefore the page — open on a phone. */}
+      {action ? <div className="max-w-full min-w-0 shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -266,7 +269,7 @@ export function PageHeader({
       ) : (
         <span className="min-w-0" />
       )}
-      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full min-w-0 shrink-0">{action}</div> : null}
     </header>
   );
 }

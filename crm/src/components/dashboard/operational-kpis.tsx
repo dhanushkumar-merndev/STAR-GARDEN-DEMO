@@ -27,6 +27,20 @@ import { humanizeEnum } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import { loadSalesMemberAnalyticsAction } from '@/server/actions/admin';
 
+/**
+ * How many rows a leaderboard panel shows.
+ *
+ * Six is what the panel is tall enough to display without scrolling, and a
+ * ranked list that needs scrolling to reach its bottom half is not doing the
+ * job a ranking exists for. Every one of these panels has a "View all" route
+ * to the full list.
+ *
+ * A constant rather than three literals: the cap and the labels that announce
+ * it were separate before, which is how a list capped at ten can end up titled
+ * "Top 5".
+ */
+const LEADERBOARD_LIMIT = 6;
+
 type MetricKey = keyof AdminOperationalKpis['trends'][number];
 type Tone = 'brand' | 'neutral' | 'warn' | 'danger' | 'info' | 'ok';
 
@@ -219,16 +233,18 @@ export function OperationalKpis({
         // grid already stretches the two sections in a row to match, but
         // without this their inner cards still end wherever their own content
         // does, leaving one short and the row visibly ragged.
-        <section key={section.id} className="flex flex-col">
-          <div className="mb-2.5 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                <span className="text-brand-700">{section.icon}</span>
-                {section.title}
-              </h2>
-              <p className="mt-0.5 text-xs text-ink-muted">{section.description}</p>
-            </div>
-            <span className="shrink-0 text-xs text-ink-muted">{rangeLabel}</span>
+        <section key={section.id} className="flex min-w-0 flex-col">
+          {/* The date range is stated once, next to the control that sets it.
+              Repeating it on all six sections said the same thing six times
+              and cost a line of vertical space each — while every one of them
+              was, necessarily, identical. It stays in the drill-down dialogs,
+              which open away from that header. */}
+          <div className="mb-2.5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <span className="text-brand-700">{section.icon}</span>
+              {section.title}
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-muted">{section.description}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -238,7 +254,12 @@ export function OperationalKpis({
           </div>
 
           {!['site-visits', 'designs', 'follow-ups', 'execution'].includes(section.id) ? (
-            <div className="mt-3 flex-1 rounded-xl border border-line bg-surface p-3 sm:p-4">
+            // `flex` so the panel's single child can be told to fill it. The
+            // panel is already stretched by `flex-1` to match the taller
+            // section beside it; without this the chart kept its own fixed
+            // height and the surplus showed up as dead white space under the
+            // x-axis.
+            <div className="mt-3 flex min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface p-3 sm:p-4">
               {section.id === 'leads' ? (
                 <CallOutcomeLineChart trend={data.leads.call_outcome_trends} />
               ) : section.id === 'sales' ? (
@@ -252,7 +273,7 @@ export function OperationalKpis({
             </div>
           ) : null}
           {section.id === 'follow-ups' ? (
-            <div className="mt-3 grid flex-1 gap-3 lg:grid-cols-2">
+            <div className="mt-3 grid min-w-0 flex-1 gap-3 lg:grid-cols-2">
               <FollowUpPie data={data.follow_ups} />
               <FollowUpTopMembers
                 members={data.follow_ups.members ?? []}
@@ -461,7 +482,7 @@ function SalesMemberTable({
   return (
     <div className="max-h-[48dvh] overflow-auto rounded-lg border border-line">
       <table className="w-full min-w-[1040px] text-left text-xs">
-        <thead className="sticky top-0 bg-canvas text-ink-muted">
+        <thead className="sticky top-0 z-10 bg-surface-muted text-ink-muted">
           <tr>{['Sales member', 'Assigned', 'Contacted', 'Uncontacted', 'Interested', 'Not interested', 'Connected', 'No answer', 'Busy', 'Switched off', 'Invalid'].map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 font-medium">{label}</th>)}</tr>
         </thead>
         <tbody>
@@ -470,7 +491,22 @@ function SalesMemberTable({
               if (event.key === 'Enter' || event.key === ' ') onSelect(member);
             }} className="cursor-pointer border-t border-line transition hover:bg-brand-50 focus:bg-brand-50 focus:outline-none">
               <td className="px-3 py-2.5 font-medium text-ink">{member.name}</td>
-              {[member.assigned, member.contacted, member.uncontacted, member.interested, member.not_interested, member.connected, member.no_answer, member.busy, member.switched_off, member.invalid].map((value, index) => <td key={index} className="px-3 py-2.5 tabular-nums">{value ?? 0}</td>)}
+              {/* Uncontacted is the one number here that is a problem rather
+                  than a measurement — a lead nobody has rung yet. Index 2 is
+                  its column; a zero stays muted, because nothing outstanding
+                  is not a warning. The heading is left alone: §16 forbids
+                  colour as the only signal, and it already names the column. */}
+              {[member.assigned, member.contacted, member.uncontacted, member.interested, member.not_interested, member.connected, member.no_answer, member.busy, member.switched_off, member.invalid].map((value, index) => (
+                <td
+                  key={index}
+                  className={cn(
+                    'px-3 py-2.5 tabular-nums',
+                    index === 2 && (value ?? 0) > 0 && 'font-semibold text-danger',
+                  )}
+                >
+                  {value ?? 0}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -508,34 +544,42 @@ function SalesOverview({
         (b.contacted ?? 0) - (a.contacted ?? 0) ||
         a.name.localeCompare(b.name),
       )
-      .slice(0, 10),
+      .slice(0, LEADERBOARD_LIMIT),
     [members],
   );
 
   return (
-    <div className="grid min-h-72 gap-4 lg:grid-cols-2 lg:gap-0">
+    <div className="grid min-h-72 min-w-0 flex-1 gap-4 lg:grid-cols-2 lg:gap-0">
       <div className="min-w-0 lg:pr-4">
         <SalesOutcomePieChart members={members} />
       </div>
-      <div className="min-w-0 border-t border-line pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-4">
+      <div className="flex min-w-0 flex-col border-t border-line pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-ink">Top performers</p>
             <p className="text-[11px] text-ink-muted">Ranked by Interested leads</p>
           </div>
-          <span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-semibold text-brand-700">Top 10</span>
+          <span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-semibold text-brand-700">Top {LEADERBOARD_LIMIT}</span>
         </div>
-        <div className="h-[15rem] overflow-hidden rounded-lg border border-line">
+        {/* `overflow-y-auto`, not `hidden`: at ten members the old fixed box
+            silently clipped the last rows rather than scrolling to them. */}
+        <div className="min-h-[15rem] flex-1 overflow-y-auto rounded-lg border border-line">
           <table className="w-full table-fixed text-left text-xs">
-            <thead className="bg-canvas text-ink-muted">
+            <thead className="sticky top-0 z-10 bg-surface-muted text-ink-muted">
               <tr>
-                <th className="w-9 px-2 py-1.5 text-center font-medium">#</th>
-                <th className="px-2 py-1.5 font-medium">Sales member</th>
-                <th className="w-20 px-2 py-1.5 text-center font-medium">Interested</th>
-                <th className="w-24 px-2 py-1.5 text-center font-medium">Not interested</th>
+                {/* The rank lives with the name it ranks, so the column that
+                    used to be headed "#" is gone. A bare hash reads as an id,
+                    not a position, and cost a column to say nothing. */}
+                <th scope="col" className="px-3 py-2 font-medium">Sales member</th>
+                <th scope="col" className="w-[4.5rem] px-2 py-2 text-right font-medium">
+                  Interested
+                </th>
+                <th scope="col" className="w-[5rem] px-3 py-2 text-right font-medium">
+                  Not interested
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {ranked.length ? ranked.map((member, index) => (
                 <tr
                   key={member.id}
@@ -545,15 +589,25 @@ function SalesOverview({
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') onSelect(member);
                   }}
-                  className="h-[1.3rem] cursor-pointer border-t border-line transition hover:bg-brand-50 focus:bg-brand-50 focus:outline-none"
+                  className="cursor-pointer transition-colors hover:bg-brand-50 focus:bg-brand-50 focus:outline-none"
                 >
-                  <td className="px-2 text-center font-semibold tabular-nums text-brand-700">{index + 1}</td>
-                  <td className="truncate px-2 font-medium text-ink" title={member.name}>{member.name}</td>
-                  <td className="px-2 text-center font-semibold tabular-nums text-brand-700">{member.interested ?? 0}</td>
-                  <td className="px-2 text-center tabular-nums text-ink-muted">{member.not_interested ?? 0}</td>
+                  <td className="px-3 py-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <RankChip position={index + 1} />
+                      <span className="truncate font-medium text-ink" title={member.name}>
+                        {member.name}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-right font-semibold tabular-nums text-brand-700">
+                    {member.interested ?? 0}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
+                    {member.not_interested ?? 0}
+                  </td>
                 </tr>
               )) : (
-                <tr><td colSpan={4} className="p-6 text-center text-ink-muted">No sales members.</td></tr>
+                <tr><td colSpan={3} className="p-6 text-center text-ink-muted">No sales members.</td></tr>
               )}
             </tbody>
           </table>
@@ -561,6 +615,28 @@ function SalesOverview({
         <p className="mt-2 text-[11px] text-ink-muted">Select a row to open daily performance in Table view.</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * The position badge that replaced the "#" column.
+ *
+ * Top three are filled, the rest are outlined — a leaderboard's whole job is to
+ * make the top of it findable without reading, and eight identical grey circles
+ * do not do that. Numerals stay tabular so the badges keep one width.
+ */
+function RankChip({ position }: { position: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={
+        position <= 3
+          ? 'flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[10px] font-semibold tabular-nums text-white'
+          : 'flex size-5 shrink-0 items-center justify-center rounded-full border border-line text-[10px] font-medium tabular-nums text-ink-subtle'
+      }
+    >
+      {position}
+    </span>
   );
 }
 
@@ -572,27 +648,27 @@ function DesignOverview({ data }: { data: AdminOperationalKpis['designs'] }) {
     { name: 'Completed', value: data.completed ?? 0, itemStyle: { color: '#00875a' } },
   ].filter((item) => item.value > 0);
   const option: EChartsOption = {
-    tooltip: { trigger: 'item', appendToBody: true, formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
     legend: { bottom: 0, textStyle: AXIS_LABEL },
     series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], label: { formatter: '{b}\n{c}', color: CHART_INK.muted }, data: pie }],
   };
-  const members = (data.members ?? []).slice(0, 10);
+  const members = (data.members ?? []).slice(0, LEADERBOARD_LIMIT);
   return (
-    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Design work</p>
         <p className="text-[11px] text-ink-muted">Pending compared with completed designs</p>
         {pie.length ? <Chart option={option} className="h-64" summary="Pending and completed landscape design projects." /> : <div className="flex h-64 items-center justify-center text-sm text-ink-muted">No design work in this range.</div>}
       </div>
       <div className="min-w-0 border-t border-line p-3 sm:p-4 lg:border-t-0">
-        <div className="mb-2 flex items-center justify-between"><div><p className="text-sm font-semibold text-ink">Designer workload</p><p className="text-[11px] text-ink-muted">Top 10 by pending work</p></div><Link href="/designs" className="text-xs font-semibold text-brand-700">View all</Link></div>
+        <div className="mb-2 flex items-center justify-between"><div><p className="text-sm font-semibold text-ink">Designer workload</p><p className="text-[11px] text-ink-muted">Top {LEADERBOARD_LIMIT} by pending work</p></div><Link href="/designs" className="text-xs font-semibold text-brand-700">View all</Link></div>
         <div className="h-64 overflow-y-auto rounded-lg border border-line">
           <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 bg-canvas text-ink-muted"><tr><th className="px-3 py-2 font-medium">Designer</th><th className="px-3 py-2 text-center font-medium">Pending</th><th className="px-3 py-2 text-center font-medium">Completed</th></tr></thead>
-            <tbody>{members.map((member) => <tr key={member.id} className="border-t border-line">
+            <thead className="sticky top-0 z-10 bg-surface-muted text-ink-muted"><tr><th scope="col" className="px-3 py-2 font-medium">Designer</th><th scope="col" className="w-[4.5rem] px-2 py-2 text-right font-medium">Pending</th><th scope="col" className="w-[5rem] px-3 py-2 text-right font-medium">Completed</th></tr></thead>
+            <tbody className="divide-y divide-line">{members.map((member) => <tr key={member.id} className="transition-colors hover:bg-surface-muted">
               <td className="px-3 py-2.5 font-medium text-ink"><Link href={`/designs?scope=ALL&designer=${member.id}`} className="hover:text-brand-700 hover:underline">{member.name}</Link></td>
-              <td className="p-0 text-center font-semibold tabular-nums text-orange-700"><Link href={`/designs?scope=PENDING&designer=${member.id}`} className="block px-3 py-2.5 hover:bg-orange-50 hover:underline" aria-label={`Open ${member.name}'s pending designs`}>{member.pending}</Link></td>
-              <td className="p-0 text-center font-semibold tabular-nums text-brand-700"><Link href={`/designs?scope=COMPLETED&designer=${member.id}`} className="block px-3 py-2.5 hover:bg-brand-50 hover:underline" aria-label={`Open ${member.name}'s completed designs`}>{member.completed}</Link></td>
+              <td className="p-0 font-semibold tabular-nums text-orange-700"><Link href={`/designs?scope=PENDING&designer=${member.id}`} className="block px-3 py-2.5 text-right hover:bg-orange-50 hover:underline" aria-label={`Open ${member.name}'s pending designs`}>{member.pending}</Link></td>
+              <td className="p-0 font-semibold tabular-nums text-brand-700"><Link href={`/designs?scope=COMPLETED&designer=${member.id}`} className="block px-3 py-2.5 text-right hover:bg-brand-50 hover:underline" aria-label={`Open ${member.name}'s completed designs`}>{member.completed}</Link></td>
             </tr>)}</tbody>
           </table>
           {!members.length ? <div className="flex h-48 items-center justify-center text-sm text-ink-muted">No active designers.</div> : null}
@@ -609,12 +685,12 @@ function ExecutionOverview({ data }: { data: AdminOperationalKpis['execution'] }
     { name: 'Completed', value: data.completed ?? 0, itemStyle: { color: '#00875a' } },
   ].filter((item) => item.value > 0);
   const option: EChartsOption = {
-    tooltip: { trigger: 'item', appendToBody: true, formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
     legend: { bottom: 0, textStyle: AXIS_LABEL },
     series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], label: { formatter: '{b}\n{c}', color: CHART_INK.muted }, data: pie }],
   };
   return (
-    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Execution progress</p>
         <p className="text-[11px] text-ink-muted">Assigned, in progress, and completed projects</p>
@@ -641,7 +717,7 @@ function SiteVisitOverview({ data }: { data: AdminOperationalKpis['site_visits']
     { name: 'Completed', value: data.completed ?? 0, itemStyle: { color: '#2563eb' } },
   ].filter((item) => item.value > 0);
   const option = React.useMemo<EChartsOption>(() => ({
-    tooltip: { trigger: 'item', appendToBody: true, formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
     legend: { bottom: 0, textStyle: AXIS_LABEL },
     series: [{
       type: 'pie',
@@ -653,7 +729,7 @@ function SiteVisitOverview({ data }: { data: AdminOperationalKpis['site_visits']
   }), [pieData]);
 
   return (
-    <div className="mt-3 grid flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
+    <div className="mt-3 grid min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:grid-cols-2">
       <div className="min-w-0 p-3 sm:p-4 lg:border-r lg:border-line">
         <p className="text-sm font-semibold text-ink">Scheduled vs completed</p>
         <p className="text-[11px] text-ink-muted">Visits in the selected date range</p>
@@ -699,7 +775,7 @@ function FollowUpPie({ data }: { data: AdminOperationalKpis['follow_ups'] }) {
     { name: 'Completed', value: data.completed, itemStyle: { color: '#00875a' } },
   ].filter((item) => item.value > 0);
   const option: EChartsOption = {
-    tooltip: { trigger: 'item', appendToBody: true, formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
     legend: { bottom: 0, textStyle: AXIS_LABEL },
     series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], label: { formatter: '{b}\n{c}', color: CHART_INK.muted }, data: pie }],
   };
@@ -721,36 +797,73 @@ function FollowUpTopMembers({
 }) {
   const top = [...members]
     .sort((a, b) => b.total - a.total || b.overdue - a.overdue || a.name.localeCompare(b.name))
-    .slice(0, 10);
+    .slice(0, LEADERBOARD_LIMIT);
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
       <button type="button" onClick={onShowAll} className="flex w-full items-center justify-between gap-3 border-b border-line px-3 py-2.5 text-left hover:bg-brand-50 sm:px-4">
         <span>
           <span className="block text-sm font-semibold text-ink">Top follow-up workload</span>
-          <span className="block text-[11px] text-ink-muted">Top 10 Admins/BDMs by total follow-ups</span>
+          <span className="block text-[11px] text-ink-muted">Top {LEADERBOARD_LIMIT} Admins/BDMs by total follow-ups</span>
         </span>
         <span className="text-xs font-semibold text-brand-700">View all</span>
       </button>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-left text-xs">
-          <thead className="bg-canvas text-ink-muted">
-            <tr><th className="w-10 px-3 py-2 text-center font-medium">#</th><th className="px-3 py-2 font-medium">Staff member</th><th className="px-3 py-2 text-center font-medium">Follow-ups</th><th className="px-3 py-2 text-center font-medium">Overdue</th></tr>
-          </thead>
-          <tbody>
-            {top.map((member, index) => (
-              <tr key={member.id} tabIndex={0} role="button" onClick={onShowAll} onKeyDown={(event) => {
+      {/* No `min-w` any more: dropping the "#" column left three that fit a
+          phone, so the panel no longer sprouts its own horizontal scrollbar
+          across the bottom of the card. */}
+      <table className="w-full table-fixed text-left text-xs">
+        <thead className="bg-surface-muted text-ink-muted">
+          <tr>
+            <th scope="col" className="px-3 py-2 font-medium">Staff member</th>
+            <th scope="col" className="w-[4.5rem] px-2 py-2 text-right font-medium">Follow-ups</th>
+            <th scope="col" className="w-[4.5rem] px-3 py-2 text-right font-medium">Overdue</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {top.map((member, index) => (
+            <tr
+              key={member.id}
+              tabIndex={0}
+              role="button"
+              onClick={onShowAll}
+              onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') onShowAll();
-              }} className="cursor-pointer border-t border-line hover:bg-brand-50 focus:bg-brand-50 focus:outline-none">
-                <td className="px-3 py-2 text-center font-semibold text-brand-700">{index + 1}</td>
-                <td className="px-3 py-2 font-medium text-ink">{member.name}</td>
-                <td className="px-3 py-2 text-center font-semibold tabular-nums">{member.total}</td>
-                <td className={cn('px-3 py-2 text-center font-semibold tabular-nums', member.overdue > 0 ? 'text-danger-700' : 'text-ink-muted')}>{member.overdue}</td>
-              </tr>
-            ))}
-            {!top.length ? <tr><td colSpan={4} className="p-5 text-center text-ink-muted">No staff follow-ups in this range.</td></tr> : null}
-          </tbody>
-        </table>
-      </div>
+              }}
+              className="cursor-pointer transition-colors hover:bg-brand-50 focus:bg-brand-50 focus:outline-none"
+            >
+              <td className="px-3 py-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <RankChip position={index + 1} />
+                  <span className="truncate font-medium text-ink" title={member.name}>
+                    {member.name}
+                  </span>
+                </span>
+              </td>
+              <td className="px-2 py-2 text-right font-semibold tabular-nums text-ink">
+                {member.total}
+              </td>
+              {/* Overdue is the number this panel exists to surface, so a
+                  non-zero one is coloured and a zero deliberately is not —
+                  §16 forbids colour as the only signal, and the column
+                  heading carries the meaning either way. */}
+              <td
+                className={cn(
+                  'px-3 py-2 text-right font-semibold tabular-nums',
+                  member.overdue > 0 ? 'text-danger' : 'text-ink-subtle',
+                )}
+              >
+                {member.overdue}
+              </td>
+            </tr>
+          ))}
+          {!top.length ? (
+            <tr>
+              <td colSpan={3} className="p-5 text-center text-ink-muted">
+                No staff follow-ups in this range.
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -779,7 +892,7 @@ function FollowUpMemberTable({
     <div className="space-y-3">
       <div className="max-h-[58dvh] overflow-auto rounded-lg border border-line">
         <table className="w-full min-w-[680px] text-left text-xs">
-          <thead className="sticky top-0 z-10 bg-canvas text-ink-muted">
+          <thead className="sticky top-0 z-10 bg-surface-muted text-ink-muted">
             <tr><th className="w-12 px-3 py-2 text-center font-medium">Rank</th><th className="px-3 py-2 font-medium">Staff member</th><th className="px-3 py-2 text-center font-medium">Total</th><th className="px-3 py-2 text-center font-medium">Pending</th><th className="px-3 py-2 text-center font-medium">Completed</th><th className="px-3 py-2 text-center font-medium">Overdue</th></tr>
           </thead>
           <tbody>
@@ -790,7 +903,7 @@ function FollowUpMemberTable({
                 <td className="px-3 py-2.5 text-center font-semibold tabular-nums">{member.total}</td>
                 <td className="px-3 py-2.5 text-center tabular-nums">{member.pending}</td>
                 <td className="px-3 py-2.5 text-center tabular-nums">{member.completed}</td>
-                <td className={cn('px-3 py-2.5 text-center font-semibold tabular-nums', member.overdue > 0 ? 'text-danger-700' : 'text-ink-muted')}>{member.overdue}</td>
+                <td className={cn('px-3 py-2.5 text-center font-semibold tabular-nums', member.overdue > 0 ? 'text-danger' : 'text-ink-muted')}>{member.overdue}</td>
               </tr>
             ))}
             {!rows.length ? <tr><td colSpan={6} className="p-6 text-center text-ink-muted">No staff found.</td></tr> : null}
@@ -825,7 +938,7 @@ function SalesOutcomePieChart({ members }: { members: AdminOperationalKpis['sale
   ], [members]);
   const visible = data.filter((item) => item.value > 0);
   const option = React.useMemo<EChartsOption>(() => ({
-    tooltip: { trigger: 'item', appendToBody: true, formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', ...TOOLTIP_BASE },
     legend: { type: 'scroll', bottom: 0, textStyle: AXIS_LABEL },
     color: visible.map((item) => item.color ?? CHART_BRAND.base),
     series: [{
@@ -851,7 +964,7 @@ function MemberOutcomeLineChart({ days }: { days: MemberDailyRow[] }) {
   const option = React.useMemo<EChartsOption>(() => ({
     grid: { top: 42, right: 14, bottom: 28, left: 8, containLabel: true },
     legend: { type: 'scroll', top: 0, textStyle: AXIS_LABEL, data: labels.map(humanizeEnum) },
-    tooltip: { trigger: 'axis', appendToBody: true, ...TOOLTIP_BASE },
+    tooltip: { trigger: 'axis', ...TOOLTIP_BASE },
     xAxis: { type: 'category', data: rows.map((row) => row.day), boundaryGap: false, axisTick: { show: false }, axisLabel: { ...AXIS_LABEL, hideOverlap: true }, axisLine: { lineStyle: { color: CHART_INK.line } } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: AXIS_LABEL, splitLine: { lineStyle: { color: CHART_INK.line, type: 'dashed' } } },
     series: labels.map((label) => ({
@@ -896,7 +1009,7 @@ function MemberOutcomeTable({
     <div className="space-y-3">
       <div className="max-h-[52dvh] overflow-auto rounded-lg border border-line">
         <table className="w-full min-w-[820px] text-left text-xs">
-          <thead className="sticky top-0 z-10 bg-canvas text-ink-muted">
+          <thead className="sticky top-0 z-10 bg-surface-muted text-ink-muted">
             <tr>
               <th className="px-3 py-2 font-medium">Date</th>
               {labels.map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 font-medium">{humanizeEnum(label)}</th>)}
@@ -971,7 +1084,7 @@ function CallOutcomeLineChart({
       textStyle: AXIS_LABEL,
       data: labels.map(humanizeEnum),
     },
-    tooltip: { trigger: 'axis', appendToBody: true, ...TOOLTIP_BASE },
+    tooltip: { trigger: 'axis', ...TOOLTIP_BASE },
     xAxis: { type: 'category', data: rows.map((row) => row.day), boundaryGap: false, axisTick: { show: false }, axisLabel: { ...AXIS_LABEL, hideOverlap: true }, axisLine: { lineStyle: { color: CHART_INK.line } } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: AXIS_LABEL, splitLine: { lineStyle: { color: CHART_INK.line, type: 'dashed' } } },
     series: labels.map((label) => ({
@@ -988,7 +1101,10 @@ function CallOutcomeLineChart({
   return (
     <Chart
       option={option}
-      className="h-56 sm:h-64"
+      // ECharts is driven by a ResizeObserver, so filling the flex parent is
+      // enough — the plot re-lays itself out at whatever height it lands on.
+      fill
+      className="min-h-56"
       summary="Daily Interested, Not interested, Connected, No answer, Busy, Switched off, and Invalid number call outcomes."
     />
   );
@@ -998,10 +1114,10 @@ function PhaseLineChart({ trend, metric, label }: { trend: AdminOperationalKpis[
   const rows = trend.map((row) => ({ label: row.day, value: Number(row[metric]) || 0 }));
   const option = React.useMemo<EChartsOption>(() => ({
     grid: { top: 12, right: 12, bottom: 20, left: 8, containLabel: true },
-    tooltip: { trigger: 'axis', appendToBody: true, ...TOOLTIP_BASE },
+    tooltip: { trigger: 'axis', ...TOOLTIP_BASE },
     xAxis: { type: 'category', data: rows.map((row) => row.label), boundaryGap: false, axisTick: { show: false }, axisLabel: { ...AXIS_LABEL, hideOverlap: true }, axisLine: { lineStyle: { color: CHART_INK.line } } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: AXIS_LABEL, splitLine: { lineStyle: { color: CHART_INK.line, type: 'dashed' } } },
     series: [{ type: 'line', data: rows.map((row) => row.value), smooth: 0.25, showSymbol: false, lineStyle: { color: CHART_BRAND.base, width: 2 }, itemStyle: { color: CHART_BRAND.base }, areaStyle: { color: 'rgba(0, 113, 62, 0.08)' } }],
   }), [rows]);
-  return <Chart option={option} className="h-44 sm:h-52" summary={`${label} activity by day.`} table={rows.map((row) => ({ label: row.label, value: String(row.value) }))} />;
+  return <Chart option={option} fill className="min-h-44 sm:min-h-52" summary={`${label} activity by day.`} table={rows.map((row) => ({ label: row.label, value: String(row.value) }))} />;
 }

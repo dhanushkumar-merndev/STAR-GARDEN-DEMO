@@ -5,6 +5,10 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listExecutionProjects } from '@/server/services/execution';
 import { Alert, Card, EmptyState, PageHeader } from '@/components/ui';
 import { ExecutionStatusBadge, DueBadge } from '@/components/status';
+import { FilterTabs } from '@/components/ui/filter-tabs';
+import { countExecutionProjectsByScope } from '@/server/services/execution';
+import { Pagination } from '@/components/ui/pagination';
+import { readPageParam } from '@/lib/pagination';
 
 export const metadata: Metadata = { title: 'Execution' };
 
@@ -28,36 +32,27 @@ export default async function ExecutionPage({
     (typeof params.scope === 'string' ? params.scope : undefined) ??
     (user.role === 'EXECUTION' ? 'MINE' : 'ACTIVE');
 
-  const projects = await listExecutionProjects(user, {
-    scope: scope as (typeof SCOPES)[number]['value'],
-  });
+  const page = readPageParam(params);
+
+  const [{ items: projects, total, pageSize }, counts] = await Promise.all([
+    listExecutionProjects(user, { scope: scope as (typeof SCOPES)[number]['value'], page }),
+    countExecutionProjectsByScope(user, SCOPES.map((option) => option.value)),
+  ]);
 
   return (
     <>
       <PageHeader
         title="Execution"
-        subtitle={`${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`}
+        subtitle={`${total} ${total === 1 ? 'project' : 'projects'}`}
       />
 
-      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
-        {SCOPES.map((option) => {
-          const active = option.value === scope;
-          return (
-            <Link
-              key={option.value}
-              href={`/execution?scope=${option.value}`}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <FilterTabs
+        options={SCOPES.map((option) => ({ ...option, count: counts[option.value] ?? 0 }))}
+        value={scope}
+        label="Filter execution projects"
+        hrefFor={(value) => `/execution?scope=${value}`}
+        className="mb-4"
+      />
 
       {projects.length === 0 ? (
         <Card>
@@ -121,6 +116,14 @@ export default async function ExecutionPage({
           </ul>
         </Card>
       )}
+
+      <Pagination
+        basePath="/execution"
+        params={params}
+        page={page}
+        total={total}
+        pageSize={pageSize}
+      />
     </>
   );
 }

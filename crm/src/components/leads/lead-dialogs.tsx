@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Alert, Button, Checkbox, Field, Input, Select, Textarea } from '@/components/ui';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
@@ -28,9 +28,9 @@ import type { LeadStatus } from '@/types/database';
 
 type Person = { id: string; full_name: string };
 
-function useDialogForm(onDone?: () => void) {
+function useDialogForm(onDone?: () => void, defaultOpen = false) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(defaultOpen);
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
 
   const run = React.useCallback(
@@ -218,10 +218,31 @@ export function CreateFollowUpDialog({
   assignees: Person[];
   canAssign: boolean;
 }) {
-  const { open, setOpen, result, run } = useDialogForm();
+  /**
+   * `?new=1` opens this straight away.
+   *
+   * It is how the "Add follow-up" tile on the call screen reaches a dialog that
+   * lives on another tab — one navigation, and the form is already up. Read
+   * once, as the initial state, so closing the dialog does not fight the URL.
+   */
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { open, setOpen, result, run } = useDialogForm(undefined, searchParams.get('new') === '1');
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+
+    // Drop the flag once it has been consumed, or a refresh — or the back
+    // button — would reopen a dialog the user has just dismissed.
+    if (!next && searchParams.get('new') === '1') {
+      const query = new URLSearchParams(searchParams.toString());
+      query.delete('new');
+      router.replace(`/leads/${leadId}?${query.toString()}`, { scroll: false });
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           Add follow-up

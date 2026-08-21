@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
+import { DEFAULT_PAGE_SIZE, type PaginatedResult } from '@/lib/pagination';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import { assertCanWriteLead } from '@/lib/permissions/guards';
 import type { SessionUser } from '@/lib/auth/session';
@@ -202,19 +203,139 @@ export async function cancelFollowUp(
 
 export type FollowUpScope = 'PENDING' | 'TODAY' | 'OVERDUE' | 'UPCOMING' | 'COMPLETED' | 'ALL';
 
-export async function listFollowUps(
-  user: SessionUser,
-  options: { scope?: FollowUpScope; assignedTo?: string; leadId?: string; limit?: number } = {},
-): Promise<FollowUpWithLead[]> {
-  const supabase = await createClient();
+/**
+ * The scope predicate, shared by the list and the tab counts.
+ *
+ * Extracted rather than written twice: a count that disagrees with the list it
+ * labels is worse than no count at all, and two copies of six date comparisons
+ * would eventually disagree.
+ *
+ * Generic over the builder type because PostgREST's filter builder and its
+ * head-count variant are different types with the same filter methods.
+ */
+function applyFollowUpScope<Q extends {
+  in: (column: string, values: string[]) => Q;
+  eq: (column: string, value: string) => Q;
+  gte: (column: string, value: string) => Q;
+  lte: (column: string, value: string) => Q;
+  gt: (column: string, value: string) => Q;
+  lt: (column: string, value: string) => Q;
+}>(query: Q, scope: FollowUpScope): Q {
   const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
+
+  switch (scope) {
+    case 'PENDING':
+      return query.in('status', ['OPEN', 'OVERDUE']);
+    case 'TODAY':
+      return query
+        .in('status', ['OPEN', 'OVERDUE'])
+        .gte('due_at', startOfToday)
+        .lte('due_at', endOfToday.toISOString());
+    case 'OVERDUE':
+      return query.in('status', ['OPEN', 'OVERDUE']).lt('due_at', now.toISOString());
+    case 'UPCOMING':
+      return query.in('status', ['OPEN', 'OVERDUE']).gt('due_at', endOfToday.toISOString());
+    case 'COMPLETED':
+      return query.eq('status', 'COMPLETED');
+    default:
+      return query;
+  }
+}
+
+/** One RLS-scoped aggregate for every tab; avoids one HTTP query per scope. */
+export async function countFollowUpsByScope(
+  user: SessionUser,
+  scopes: readonly FollowUpScope[],
+  options: { assignedTo?: string } = {},
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+  const assignedTo = options.assignedTo ?? (user.isAdmin ? null : user.id);
+
+  const { data, error } = await supabase.rpc('follow_up_scope_counts', {
+    p_assigned_to: assignedTo,
+    p_now: now.toISOString(),
+    p_start_today: startOfToday,
+    p_end_today: endOfToday,
+  });
+  if (error) {
+    console.warn('[follow-ups] follow_up_scope_counts RPC unavailable; using count fallback', error);
+    return countFollowUpsByScopeFallback(supabase, user, scopes, options);
+  }
+
+  const values = data && !Array.isArray(data) && typeof data === 'object' ? data : {};
+  return Object.fromEntries(scopes.map((scope) => [scope, Number(values[scope] ?? 0)]));
+}
+
+async function countFollowUpsByScopeFallback(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: SessionUser,
+  scopes: readonly FollowUpScope[],
+  options: { assignedTo?: string },
+): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    scopes.map(async (scope) => {
+      let query = supabase.from('follow_ups').select('id', { count: 'exact', head: true });
+      if (options.assignedTo) query = query.eq('assigned_to', options.assignedTo);
+      else if (!user.isAdmin) query = query.eq('assigned_to', user.id);
+
+      const { count, error } = await applyFollowUpScope(query, scope);
+      if (error) throw new AppError('INTERNAL', 'Could not count follow-ups.', { cause: error });
+      return [scope, count ?? 0] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+export async function listFollowUps(
+  user: SessionUser,
+  options: {
+    scope?: FollowUpScope;
+    assignedTo?: string;
+    leadId?: string;
+    limit?: number;
+    offset?: number;
+    /** `yyyy-mm-dd`. Narrows to one calendar day, for the calendar drill-down. */
+    day?: string;
+    /**
+     * ISO timestamps bounding `due_at`, for the calendar grid.
+     *
+     * The grid needs every follow-up in the weeks it draws — which is a
+     * question about dates, not about row counts. Bounding it by `limit` (as
+     * it was) silently dropped work off the end of a busy month; bounding it
+     * by the range actually rendered cannot.
+     */
+    from?: string;
+    to?: string;
+    /**
+     * Setting this switches the call into paged mode: `pageSize` rows at that
+     * offset, plus an exact `total`. Left unset (dashboard panels, and the
+     * month calendar, which needs whole weeks rather than a page) the call
+     * keeps its `limit`/`offset` behaviour and skips the count, which is a
+     * full scan under RLS.
+     */
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<PaginatedResult<FollowUpWithLead>> {
+  const supabase = await createClient();
+  const paged = options.page !== undefined;
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = paged
+    ? Math.min(100, Math.max(5, options.pageSize ?? DEFAULT_PAGE_SIZE))
+    : Math.min(500, Math.max(1, options.limit ?? 100));
+  const offset = paged ? (page - 1) * pageSize : Math.max(0, options.offset ?? 0);
 
   let query = supabase
     .from('follow_ups')
     .select(
-      '*, lead:leads!follow_ups_lead_id_fkey(id, lead_code, customer_name, mobile_country_code, mobile_normalized)',
+      'id, lead_id, assigned_to, title, notes, due_at, is_automatic, status, completed_at, completed_by, created_by, created_at, updated_at, lead:leads!follow_ups_lead_id_fkey(id, lead_code, customer_name, mobile_country_code, mobile_normalized)',
+      paged ? { count: 'exact' } : undefined,
     );
 
   // Admins see the whole desk; everyone else sees their own queue.
@@ -226,58 +347,39 @@ export async function listFollowUps(
 
   if (options.leadId) query = query.eq('lead_id', options.leadId);
 
-  switch (options.scope ?? 'ALL') {
-    case 'PENDING':
-      query = query.in('status', ['OPEN', 'OVERDUE']);
-      break;
-    case 'TODAY':
-      query = query
-        .in('status', ['OPEN', 'OVERDUE'])
-        .gte('due_at', new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
-        .lte('due_at', endOfToday.toISOString());
-      break;
-    case 'OVERDUE':
-      query = query.in('status', ['OPEN', 'OVERDUE']).lt('due_at', now.toISOString());
-      break;
-    case 'UPCOMING':
-      query = query.in('status', ['OPEN', 'OVERDUE']).gt('due_at', endOfToday.toISOString());
-      break;
-    case 'COMPLETED':
-      query = query.eq('status', 'COMPLETED');
-      break;
+  query = applyFollowUpScope(query, options.scope ?? 'ALL');
+
+  // Applied after the scope, not instead of it: clicking 17 Aug while looking
+  // at Overdue should show that day's overdue work, not everything on the day.
+  if (options.from) query = query.gte('due_at', options.from);
+  if (options.to) query = query.lte('due_at', options.to);
+
+  const dayParts = options.day?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dayParts) {
+    const year = Number(dayParts[1]);
+    const month = Number(dayParts[2]) - 1;
+    const date = Number(dayParts[3]);
+    query = query
+      .gte('due_at', new Date(year, month, date).toISOString())
+      .lte('due_at', new Date(year, month, date, 23, 59, 59, 999).toISOString());
   }
 
-  const { data, error } = await query
+  const { data, count, error } = await query
     .order('due_at', { ascending: (options.scope ?? 'ALL') !== 'COMPLETED' })
-    .limit(options.limit ?? 100);
+    .range(offset, offset + pageSize - 1);
 
   if (error) throw new AppError('INTERNAL', 'Could not load follow-ups.', { cause: error });
 
-  return (data ?? []) as unknown as FollowUpWithLead[];
+  const items = (data ?? []) as unknown as FollowUpWithLead[];
+  return { items, total: count ?? items.length, page, pageSize };
 }
 
 /** Counts for the dashboard tiles (§12.2). */
 export async function followUpCounts(user: SessionUser) {
-  const supabase = await createClient();
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-
-  const base = () => {
-    const q = supabase
-      .from('follow_ups')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['OPEN', 'OVERDUE']);
-    return user.isAdmin ? q : q.eq('assigned_to', user.id);
-  };
-
-  const [overdue, today] = await Promise.all([
-    base().lt('due_at', now.toISOString()),
-    base().gte('due_at', startOfToday).lte('due_at', endOfToday),
-  ]);
+  const counts = await countFollowUpsByScope(user, ['OVERDUE', 'TODAY']);
 
   return {
-    overdue: overdue.count ?? 0,
-    today: today.count ?? 0,
+    overdue: counts.OVERDUE ?? 0,
+    today: counts.TODAY ?? 0,
   };
 }

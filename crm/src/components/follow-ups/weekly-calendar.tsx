@@ -31,10 +31,13 @@ export function FollowUpCalendar({
   items,
   view,
   scope,
+  selectedDate,
 }: {
   items: FollowUpWithLead[];
   view: CalendarView;
   scope: string;
+  /** `yyyy-mm-dd` currently being drilled into, so its cell reads as chosen. */
+  selectedDate?: string;
 }) {
   const today = new Date();
   const isMonth = view === 'month';
@@ -88,24 +91,41 @@ export function FollowUpCalendar({
               // rectangular, but must not read as part of this month's workload.
               const isOutsideMonth = isMonth && !isSameMonth(day, today);
 
+              const dayKey = format(day, 'yyyy-MM-dd');
+              const isSelected = selectedDate === dayKey;
+              // The whole cell cannot be a link — it already contains links to
+              // individual follow-ups, and an anchor inside an anchor is not
+              // valid HTML. The date heading is the handle instead.
+              const dayHref = `/follow-ups?scope=${scope}&view=${view}&date=${dayKey}`;
+
               return (
                 <section
                   key={day.toISOString()}
                   className={[
                     'rounded-lg border p-2',
                     isMonth ? 'min-h-24' : 'min-h-32',
-                    isToday ? 'border-brand-300 bg-brand-50' : 'border-line bg-surface',
+                    isSelected
+                      ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600'
+                      : isToday
+                        ? 'border-brand-300 bg-brand-50'
+                        : 'border-line bg-surface',
                     isOutsideMonth && !isToday ? 'opacity-45' : '',
                   ].join(' ')}
                 >
-                  {isMonth ? (
-                    <p className="text-xs font-semibold text-ink">{format(day, 'd')}</p>
-                  ) : (
-                    <>
-                      <p className="text-xs font-semibold text-ink">{format(day, 'EEE')}</p>
-                      <p className="text-xs text-ink-muted">{format(day, 'd MMM')}</p>
-                    </>
-                  )}
+                  <Link
+                    href={dayHref}
+                    aria-label={`Show follow-ups for ${format(day, 'd MMMM yyyy')}`}
+                    className="-mx-1 -mt-1 block rounded-md px-1 py-0.5 hover:bg-brand-100/60"
+                  >
+                    {isMonth ? (
+                      <p className="text-xs font-semibold text-ink">{format(day, 'd')}</p>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-ink">{format(day, 'EEE')}</p>
+                        <p className="text-xs text-ink-muted">{format(day, 'd MMM')}</p>
+                      </>
+                    )}
+                  </Link>
 
                   <div className="mt-2 space-y-1.5">
                     {visibleItems.map((item) => (
@@ -129,8 +149,16 @@ export function FollowUpCalendar({
                         </span>
                       </Link>
                     ))}
+                    {/* The overflow is the other reason to open a day: the cell
+                        caps at three, and the rest were previously unreachable
+                        from here. */}
                     {moreCount > 0 ? (
-                      <p className="px-1 text-xs font-medium text-brand-700">+{moreCount} more</p>
+                      <Link
+                        href={dayHref}
+                        className="block px-1 text-xs font-medium text-brand-700 hover:underline"
+                      >
+                        +{moreCount} more
+                      </Link>
                     ) : null}
                     {dayItems.length === 0 && !isMonth ? (
                       <p className="pt-2 text-xs text-ink-subtle">No follow-ups</p>

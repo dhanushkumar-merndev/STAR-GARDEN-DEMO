@@ -107,12 +107,30 @@ Deno.serve(async (request) => {
 
   const supabase = serviceClient();
   const events = extractLeadgenEvents(payload);
+  const allowedPages = (env('META_ALLOWED_PAGE_IDS') ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const mappingCache = new Map<string, Promise<MappingEntry[]>>();
+  let adminIdsPromise: Promise<string[]> | null = null;
+  const adminIds = () => (adminIdsPromise ??= loadActiveAdminIds(supabase));
 
   const summary = { received: events.length, created: 0, duplicates: 0, unmapped: 0, failed: 0 };
 
+  // Keep intake creation ordered: two different Meta events can contain the
+  // same mobile number, and the second must see the first before the duplicate
+  // check. Mapping/admin fan-out is still cached/batched below.
   for (const event of events) {
     try {
-      const outcome = await processEvent(supabase, event, payload, pageAccessToken);
+      const outcome = await processEvent(
+        supabase,
+        event,
+        payload,
+        pageAccessToken,
+        allowedPages,
+        mappingCache,
+        adminIds,
+      );
       if (outcome === 'CREATED') summary.created += 1;
       else if (outcome === 'DUPLICATE') summary.duplicates += 1;
       else if (outcome === 'UNMAPPED') summary.unmapped += 1;
@@ -178,12 +196,10 @@ async function processEvent(
   event: LeadgenEvent,
   rawPayload: unknown,
   pageAccessToken: string,
+  allowedPages: string[],
+  mappingCache: Map<string, Promise<MappingEntry[]>>,
+  adminIds: () => Promise<string[]>,
 ): Promise<Outcome> {
-  const allowedPages = (env('META_ALLOWED_PAGE_IDS') ?? '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-
   if (allowedPages.length > 0 && !allowedPages.includes(event.pageId)) {
     await upsertEvent(supabase, event, rawPayload, 'IGNORED', 'Page is not in the allow list.');
     return 'SKIPPED';
@@ -245,13 +261,20 @@ async function processEvent(
     }
 
     // Step 3 — the saved mapping for this form.
-    const { data: mappingRows } = await supabase
-      .from('meta_field_mappings')
-      .select('meta_field_key, crm_field')
-      .eq('meta_form_id', formId)
-      .eq('is_active', true);
-
-    const mapping = (mappingRows ?? []) as MappingEntry[];
+    let mappingPromise = mappingCache.get(formId);
+    if (!mappingPromise) {
+      mappingPromise = (async () => {
+        const { data: mappingRows, error } = await supabase
+          .from('meta_field_mappings')
+          .select('meta_field_key, crm_field')
+          .eq('meta_form_id', formId)
+          .eq('is_active', true);
+        if (error) throw error;
+        return (mappingRows ?? []) as MappingEntry[];
+      })();
+      mappingCache.set(formId, mappingPromise);
+    }
+    const mapping = await mappingPromise;
 
     const hasName = mapping.some((row) => row.crm_field === 'customer_name');
     const hasMobile = mapping.some((row) => row.crm_field === 'mobile');
@@ -373,7 +396,7 @@ async function processEvent(
     await markEvent(supabase, eventId, 'PROCESSED', null);
 
     // Step 7 — tell the desk. Nobody owns this lead yet.
-    await notifyAdmins(supabase, created.id, created.lead_code, created.customer_name);
+    await notifyAdmins(supabase, adminIds, created.id, created.lead_code, created.customer_name);
 
     await audit(supabase, {
       action: 'LEAD_META_ATTRIBUTION_CREATED',
@@ -451,25 +474,36 @@ async function markEvent(
 /** New Meta leads land unassigned, so every active Admin is told. */
 async function notifyAdmins(
   supabase: SupabaseClient,
+  adminIds: () => Promise<string[]>,
   leadId: string,
   leadCode: string,
   customerName: string,
 ): Promise<void> {
-  const { data: admins } = await supabase
+  const rows = (await adminIds()).map((adminId) => ({
+    user_id: adminId,
+    type: 'LEAD_ASSIGNED',
+    title: 'New lead from Meta',
+    body: `${leadCode} · ${customerName}`,
+    entity_type: 'lead',
+    entity_id: leadId,
+  }));
+  if (rows.length === 0) return;
+
+  const { error } = await supabase.rpc('insert_notifications_dedup', { p_rows: rows });
+  if (error) {
+    // Keep webhook intake compatible with a database that has not received the
+    // batching migration yet. The daily dedupe index still rejects repeats.
+    console.warn('[meta-webhook] notification batch RPC unavailable; using insert fallback', error);
+    await Promise.allSettled(rows.map((row) => supabase.from('notifications').insert(row)));
+  }
+}
+
+async function loadActiveAdminIds(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase
     .from('profiles')
     .select('id')
     .eq('role', 'ADMIN')
     .eq('is_active', true);
-
-  for (const admin of admins ?? []) {
-    // 23505 from the per-day dedupe index is expected and harmless.
-    await supabase.from('notifications').insert({
-      user_id: admin.id,
-      type: 'LEAD_ASSIGNED',
-      title: 'New lead from Meta',
-      body: `${leadCode} · ${customerName}`,
-      entity_type: 'lead',
-      entity_id: leadId,
-    });
-  }
+  if (error) throw error;
+  return (data ?? []).map((profile) => profile.id as string);
 }

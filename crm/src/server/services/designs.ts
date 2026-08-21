@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
+import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import { notify, NotificationCopy } from '@/lib/notifications';
 import { sendStaffEmail } from '@/lib/email';
@@ -424,54 +425,124 @@ export async function approveVersion(
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
-export type DesignScope = 'MINE' | 'PENDING' | 'COMPLETED' | 'AWAITING_ASSIGNMENT' | 'READY_FOR_REVIEW' | 'DUE' | 'ALL';
+export type DesignScope =
+  | 'MINE'
+  | 'PENDING'
+  | 'COMPLETED'
+  | 'AWAITING_ASSIGNMENT'
+  | 'READY_FOR_REVIEW'
+  | 'REVISION_REQUESTED'
+  | 'DUE'
+  | 'ALL';
+
+/** The scope predicate, shared by the list and the tab counts (see follow-ups). */
+function applyDesignScope<Q extends {
+  eq: (column: string, value: string) => Q;
+  neq: (column: string, value: string) => Q;
+  is: (column: string, value: null) => Q;
+  in: (column: string, values: string[]) => Q;
+  not: (column: string, operator: string, value: string | null) => Q;
+  lte: (column: string, value: string) => Q;
+}>(query: Q, scope: DesignScope, userId: string): Q {
+  switch (scope) {
+    case 'MINE':
+      return query.eq('assigned_designer_id', userId).neq('status', 'CANCELLED');
+    case 'AWAITING_ASSIGNMENT':
+      return query.is('assigned_designer_id', null).in('status', ['REQUIRED']);
+    case 'PENDING':
+      return query.not('status', 'in', '("APPROVED","CANCELLED")');
+    case 'COMPLETED':
+      return query.eq('status', 'APPROVED');
+    case 'READY_FOR_REVIEW':
+      return query.eq('status', 'READY_FOR_REVIEW');
+    case 'REVISION_REQUESTED':
+      return query.eq('status', 'REVISION_REQUESTED');
+    case 'DUE':
+      return query
+        .not('due_at', 'is', null)
+        .not('status', 'in', '("APPROVED","CANCELLED")')
+        .lte('due_at', new Date(Date.now() + 3 * 86_400_000).toISOString());
+    default:
+      return query.neq('status', 'CANCELLED');
+  }
+}
+
+export async function countDesignProjectsByScope(
+  user: SessionUser,
+  scopes: readonly DesignScope[],
+  options: { designerId?: string } = {},
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('design_project_scope_counts', {
+    p_designer_id: options.designerId ?? null,
+    p_current_user_id: user.id,
+    p_due_cutoff: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+  });
+  if (error) {
+    console.warn('[designs] design_project_scope_counts RPC unavailable; using count fallback', error);
+    const entries = await Promise.all(
+      scopes.map(async (scope) => {
+        let query = supabase.from('design_projects').select('id', { count: 'exact', head: true });
+        query = applyDesignScope(query, scope, user.id);
+        if (options.designerId) query = query.eq('assigned_designer_id', options.designerId);
+        const { count, error: countError } = await query;
+        if (countError) {
+          throw new AppError('INTERNAL', 'Could not count design projects.', { cause: countError });
+        }
+        return [scope, count ?? 0] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
+  }
+
+  const values = data && !Array.isArray(data) && typeof data === 'object' ? data : {};
+  return Object.fromEntries(scopes.map((scope) => [scope, Number(values[scope] ?? 0)]));
+}
 
 export async function listDesignProjects(
   user: SessionUser,
-  options: { scope?: DesignScope; designerId?: string; limit?: number } = {},
+  options: {
+    scope?: DesignScope;
+    designerId?: string;
+    limit?: number;
+    offset?: number;
+    /**
+     * Setting this switches the call into paged mode: `pageSize` rows at that
+     * offset, plus an exact `total`. Left unset (dashboard widgets, exports)
+     * the call keeps its `limit`/`offset` behaviour and skips the count, which
+     * is a full scan under RLS and not worth paying for a ten-row panel.
+     */
+    page?: number;
+    pageSize?: number;
+  } = {},
 ) {
   const supabase = await createClient();
+  const paged = options.page !== undefined;
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = paged
+    ? Math.min(100, Math.max(5, options.pageSize ?? DEFAULT_PAGE_SIZE))
+    : Math.min(500, Math.max(1, options.limit ?? 100));
+  const offset = paged ? (page - 1) * pageSize : Math.max(0, options.offset ?? 0);
 
   let query = supabase
     .from('design_projects')
     .select(
-      '*, lead:leads!design_projects_lead_id_fkey(id, lead_code, customer_name, location_text), designer:profiles!design_projects_assigned_designer_id_fkey(id, full_name)',
+      'id, status, due_at, lead:leads!design_projects_lead_id_fkey(id, lead_code, customer_name, location_text), designer:profiles!design_projects_assigned_designer_id_fkey(id, full_name)',
+      paged ? { count: 'exact' } : undefined,
     );
 
-  switch (options.scope ?? (user.role === 'DESIGNER' ? 'MINE' : 'ALL')) {
-    case 'MINE':
-      query = query.eq('assigned_designer_id', user.id).neq('status', 'CANCELLED');
-      break;
-    case 'AWAITING_ASSIGNMENT':
-      query = query.is('assigned_designer_id', null).in('status', ['REQUIRED']);
-      break;
-    case 'PENDING':
-      query = query.not('status', 'in', '("APPROVED","CANCELLED")');
-      break;
-    case 'COMPLETED':
-      query = query.eq('status', 'APPROVED');
-      break;
-    case 'READY_FOR_REVIEW':
-      query = query.eq('status', 'READY_FOR_REVIEW');
-      break;
-    case 'DUE':
-      query = query
-        .not('due_at', 'is', null)
-        .not('status', 'in', '("APPROVED","CANCELLED")')
-        .lte('due_at', new Date(Date.now() + 3 * 86_400_000).toISOString());
-      break;
-    default:
-      query = query.neq('status', 'CANCELLED');
-  }
+  query = applyDesignScope(query, options.scope ?? (user.role === 'DESIGNER' ? 'MINE' : 'ALL'), user.id);
 
   if (options.designerId) query = query.eq('assigned_designer_id', options.designerId);
 
-  const { data, error } = await query
+  const { data, count, error } = await query
     .order('due_at', { ascending: true, nullsFirst: false })
-    .limit(options.limit ?? 100);
+    .range(offset, offset + pageSize - 1);
 
   if (error) throw new AppError('INTERNAL', 'Could not load design projects.', { cause: error });
-  return data ?? [];
+
+  const items = data ?? [];
+  return { items, total: count ?? items.length, page, pageSize };
 }
 
 export async function getDesignProjectDetail(user: SessionUser, designProjectId: string) {
@@ -514,29 +585,16 @@ export async function getDesignProjectDetail(user: SessionUser, designProjectId:
 
 /** Counts for the Admin and Designer dashboards (§12.1, §12.3). */
 export async function designCounts(user: SessionUser) {
-  const supabase = await createClient();
-  const soon = new Date(Date.now() + 3 * 86_400_000).toISOString();
-
-  const scoped = () => {
-    const q = supabase.from('design_projects').select('id', { count: 'exact', head: true });
-    return user.role === 'DESIGNER' ? q.eq('assigned_designer_id', user.id) : q;
-  };
-
-  const [awaitingAssignment, readyForReview, dueSoon, revisions] = await Promise.all([
-    supabase
-      .from('design_projects')
-      .select('id', { count: 'exact', head: true })
-      .is('assigned_designer_id', null)
-      .eq('status', 'REQUIRED'),
-    scoped().eq('status', 'READY_FOR_REVIEW'),
-    scoped().not('due_at', 'is', null).lte('due_at', soon).not('status', 'in', '("APPROVED","CANCELLED")'),
-    scoped().eq('status', 'REVISION_REQUESTED'),
-  ]);
+  const counts = await countDesignProjectsByScope(
+    user,
+    ['AWAITING_ASSIGNMENT', 'READY_FOR_REVIEW', 'DUE', 'REVISION_REQUESTED'],
+    { designerId: user.role === 'DESIGNER' ? user.id : undefined },
+  );
 
   return {
-    awaitingAssignment: awaitingAssignment.count ?? 0,
-    readyForReview: readyForReview.count ?? 0,
-    dueSoon: dueSoon.count ?? 0,
-    revisions: revisions.count ?? 0,
+    awaitingAssignment: counts.AWAITING_ASSIGNMENT ?? 0,
+    readyForReview: counts.READY_FOR_REVIEW ?? 0,
+    dueSoon: counts.DUE ?? 0,
+    revisions: counts.REVISION_REQUESTED ?? 0,
   };
 }

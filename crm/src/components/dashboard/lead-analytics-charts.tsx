@@ -52,7 +52,6 @@ export function LeadTrendChart({ trend }: { trend: CountItem[] }) {
       grid: { top: 16, right: 16, bottom: 24, left: 8, containLabel: true },
       tooltip: {
         trigger: 'axis',
-        appendToBody: true,
         ...TOOLTIP_BASE,
         axisPointer: { type: 'line', lineStyle: { color: CHART_INK.subtle, type: 'dashed' } },
         valueFormatter: (value) => `${value} lead${value === 1 ? '' : 's'}`,
@@ -134,7 +133,6 @@ export function LeadShareChart({ items }: { items: CountItem[] }) {
     () => ({
       tooltip: {
         trigger: 'item',
-        appendToBody: true,
         ...TOOLTIP_BASE,
         formatter: (params) => {
           const point = params as { name: string; value: number; percent: number };
@@ -217,7 +215,6 @@ export function LeadRankingChart({ items, height }: { items: CountItem[]; height
       grid: { top: 4, right: 44, bottom: 4, left: 4, containLabel: true },
       tooltip: {
         trigger: 'item',
-        appendToBody: true,
         ...TOOLTIP_BASE,
         formatter: (params) => {
           const point = params as { name: string; value: number };

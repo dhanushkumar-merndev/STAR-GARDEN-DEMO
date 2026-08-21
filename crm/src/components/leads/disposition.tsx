@@ -1,9 +1,12 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
+  LuArrowRight,
+  LuCalendarPlus,
   LuCircleCheck,
   LuPhoneMissed,
   LuPhoneOff,
@@ -193,6 +196,22 @@ export function DispositionButtons({
             </button>
           );
         })}
+
+        {/* Deliberately not styled like the seven above it. Those record what
+            the customer said; this schedules something. A dashed outline and
+            the arrow say "this takes you somewhere" rather than "this is an
+            eighth outcome" — the two must not be confusable, because pressing
+            an outcome is a one-way commit. */}
+        {readOnly ? null : (
+          <Link
+            href={`/leads/${leadId}?tab=follow-ups&new=1`}
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-dashed border-brand-300 bg-brand-50/40 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-500 hover:bg-brand-50"
+          >
+            <LuCalendarPlus className="size-4" />
+            Add follow-up
+            <LuArrowRight className="size-3.5" />
+          </Link>
+        )}
       </div>
 
       <Dialog open={choice !== null} onOpenChange={(open) => !open && setChoice(null)}>

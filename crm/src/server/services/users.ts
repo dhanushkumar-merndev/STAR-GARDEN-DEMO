@@ -97,73 +97,74 @@ export async function listStaffWithActiveWork(
   const staff = await listStaff(user);
   if (staff.length === 0) return [];
 
-  // Constant query count: this screen must not issue five extra requests per
-  // staff member. At 100 users that old shape would have meant 500+ queries.
+  /**
+   * Counted in the database, not in memory.
+   *
+   * This used to fetch every assigned lead, every open follow-up, every visit
+   * attendee row and so on, then tally them here — a constant *query* count
+   * bought with an unbounded *row* count. At ten thousand leads that is
+   * megabytes of rows pulled to produce five small numbers per person, and this
+   * screen became the slowest in the CRM.
+   *
+   * `head: true` counts are five per staff member, all issued together, and
+   * none of them transfer a row. With a real staff list that is a few dozen
+   * cheap index counts.
+   */
   const supabase = await createClient();
-  const [leads, followUps, attendance, activeVisits, designs, tasks] = await Promise.all([
-    supabase
-      .from('leads')
-      .select('assigned_bdm_id')
-      .not('assigned_bdm_id', 'is', null)
-      .not('status', 'in', '("LOST","CLOSED")'),
-    supabase
-      .from('follow_ups')
-      .select('assigned_to')
-      .in('status', ['OPEN', 'OVERDUE']),
-    supabase.from('site_visit_attendees').select('user_id, site_visit_id'),
-    supabase
-      .from('site_visits')
-      .select('id')
-      .in('status', ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS']),
-    supabase
-      .from('design_projects')
-      .select('assigned_designer_id')
-      .not('assigned_designer_id', 'is', null)
-      .not('status', 'in', '("APPROVED","CANCELLED","NOT_REQUIRED")'),
-    supabase
-      .from('execution_tasks')
-      .select('assigned_to')
-      .not('assigned_to', 'is', null)
-      .not('status', 'in', '("COMPLETED","CANCELLED")'),
-  ]);
 
-  const leadCounts = countBy(leads.data ?? [], (row) => row.assigned_bdm_id);
-  const followUpCounts = countBy(followUps.data ?? [], (row) => row.assigned_to);
-  const designCounts = countBy(designs.data ?? [], (row) => row.assigned_designer_id);
-  const taskCounts = countBy(tasks.data ?? [], (row) => row.assigned_to);
-  const activeVisitIds = new Set((activeVisits.data ?? []).map((row) => row.id));
-  const visitCounts = countBy(
-    (attendance.data ?? []).filter((row) => activeVisitIds.has(row.site_visit_id)),
-    (row) => row.user_id,
+  const withCounts = await Promise.all(
+    staff.map(async (member) => {
+      const [leads, followUps, attendance, designs, tasks] = await Promise.all([
+        supabase
+          .from('leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_bdm_id', member.id)
+          .not('status', 'in', '("LOST","CLOSED")'),
+        supabase
+          .from('follow_ups')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', member.id)
+          .in('status', ['OPEN', 'OVERDUE']),
+        // Inner join rather than two queries and a set intersection: only
+        // attendance rows whose visit is still live should count.
+        supabase
+          .from('site_visit_attendees')
+          .select('site_visit_id, site_visits!inner(id)', { count: 'exact', head: true })
+          .eq('user_id', member.id)
+          .in('site_visits.status', ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS']),
+        supabase
+          .from('design_projects')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_designer_id', member.id)
+          .not('status', 'in', '("APPROVED","CANCELLED","NOT_REQUIRED")'),
+        supabase
+          .from('execution_tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', member.id)
+          .not('status', 'in', '("COMPLETED","CANCELLED")'),
+      ]);
+
+      const counts = {
+        assignedLeads: leads.count ?? 0,
+        openFollowUps: followUps.count ?? 0,
+        upcomingSiteVisits: attendance.count ?? 0,
+        activeDesignProjects: designs.count ?? 0,
+        openExecutionTasks: tasks.count ?? 0,
+      };
+
+      return {
+        ...member,
+        activeWork: {
+          ...counts,
+          total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+        },
+      };
+    }),
   );
 
-  return staff.map((member) => {
-    const counts = {
-      assignedLeads: leadCounts.get(member.id) ?? 0,
-      openFollowUps: followUpCounts.get(member.id) ?? 0,
-      upcomingSiteVisits: visitCounts.get(member.id) ?? 0,
-      activeDesignProjects: designCounts.get(member.id) ?? 0,
-      openExecutionTasks: taskCounts.get(member.id) ?? 0,
-    };
-
-    return {
-      ...member,
-      activeWork: {
-        ...counts,
-        total: Object.values(counts).reduce((sum, count) => sum + count, 0),
-      },
-    };
-  });
+  return withCounts;
 }
 
-function countBy<T>(rows: T[], keyOf: (row: T) => string | null): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
 
 export async function listStaff(user: SessionUser): Promise<StaffMember[]> {
   requireAdminRole(user);
@@ -172,10 +173,28 @@ export async function listStaff(user: SessionUser): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
+    // Archived rows are filed away, not deleted: they stay queryable through
+    // `listArchivedStaff` but never crowd the working directory again.
+    .is('archived_at', null)
     .order('is_active', { ascending: false })
     .order('full_name');
 
   if (error) throw new AppError('INTERNAL', 'Could not load users.', { cause: error });
+  return data ?? [];
+}
+
+/** The filed-away staff rows, newest first. Admin only. */
+export async function listArchivedStaff(user: SessionUser): Promise<ProfileRow[]> {
+  requireAdminRole(user);
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throw new AppError('INTERNAL', 'Could not load archived staff.', { cause: error });
   return data ?? [];
 }
 
@@ -189,6 +208,9 @@ export async function listAccessRequests(user: SessionUser): Promise<ProfileRow[
     .select('*')
     .eq('is_active', false)
     .is('approved_at', null)
+    // An archived request has already been dealt with — it should not come
+    // back up the screen as an outstanding decision.
+    .is('archived_at', null)
     .order('created_at', { ascending: false });
 
   return data ?? [];
@@ -323,6 +345,12 @@ export async function updateStaff(
 
   if (!before) throw new AppError('NOT_FOUND', 'User not found.');
 
+  // The archive is a read-only shelf. Editing a row that is not on screen is
+  // how two Admins end up disagreeing about what a leaver's role was.
+  if (before.archived_at) {
+    throw new AppError('VALIDATION', 'Unarchive this account before editing it.');
+  }
+
   // An Admin locking themselves out is a support ticket nobody can resolve
   // from inside the app.
   if (input.user_id === user.id) {
@@ -336,15 +364,7 @@ export async function updateStaff(
 
   // Never leave the system with no way back in.
   if (before.role === 'ADMIN' && (input.role !== 'ADMIN' || !input.is_active)) {
-    const { count } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('role', 'ADMIN')
-      .eq('is_active', true);
-
-    if ((count ?? 0) <= 1) {
-      throw new AppError('VALIDATION', 'This is the last active Admin. Promote someone else first.');
-    }
+    await assertNotLastActiveAdmin();
   }
 
   if (before.role !== input.role || (before.is_active && !input.is_active)) {
@@ -392,6 +412,118 @@ export async function updateStaff(
   return updated;
 }
 
+/**
+ * Files a staff row away (§11.7).
+ *
+ * Archiving is deactivation plus disappearance, and it clears the same three
+ * bars deactivation does — you cannot archive yourself, you cannot archive the
+ * last way back into the system, and you cannot archive someone still holding
+ * live work, because that work would silently lose its owner.
+ *
+ * `is_active` goes false in the same statement as `archived_at`, which is what
+ * the `profiles_archived_is_inactive` constraint requires: an archived account
+ * that could still sign in would be an invisible active account.
+ */
+export async function archiveStaff(user: SessionUser, staffUserId: string): Promise<ProfileRow> {
+  requireAdminRole(user);
+  const supabase = await createClient();
+
+  const { data: before } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', staffUserId)
+    .maybeSingle();
+
+  if (!before) throw new AppError('NOT_FOUND', 'User not found.');
+  if (before.archived_at) return before;
+
+  if (staffUserId === user.id) {
+    throw new AppError('VALIDATION', 'You cannot archive your own account.');
+  }
+
+  if (before.role === 'ADMIN' && before.is_active) {
+    await assertNotLastActiveAdmin();
+  }
+
+  const activeWork = await getActiveWorkCounts(user, staffUserId);
+  if (activeWork.total > 0) {
+    throw new AppError(
+      'VALIDATION',
+      'Reassign this user’s active work before archiving them.',
+      { meta: { activeWork } },
+    );
+  }
+
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({
+      is_active: false,
+      archived_at: new Date().toISOString(),
+      archived_by: user.id,
+    })
+    .eq('id', staffUserId)
+    .select('*')
+    .single();
+
+  if (error || !updated) {
+    throw new AppError('INTERNAL', 'Could not archive the user.', { cause: error });
+  }
+
+  await recordAudit({
+    actorUserId: user.id,
+    action: AuditAction.USER_ARCHIVED,
+    entityType: 'profile',
+    entityId: updated.id,
+    before: { full_name: before.full_name, role: before.role, is_active: before.is_active },
+    after: { archived_at: updated.archived_at, is_active: false },
+  });
+
+  return updated;
+}
+
+/**
+ * Returns an archived row to the staff directory — visibility only.
+ *
+ * Access is deliberately *not* restored here. Someone archived months ago
+ * should come back as an inactive row an Admin then chooses to reactivate,
+ * rather than regaining a live session as a side effect of tidying up.
+ */
+export async function unarchiveStaff(user: SessionUser, staffUserId: string): Promise<ProfileRow> {
+  requireAdminRole(user);
+  const supabase = await createClient();
+
+  const { data: before } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', staffUserId)
+    .maybeSingle();
+
+  if (!before) throw new AppError('NOT_FOUND', 'User not found.');
+  if (!before.archived_at) return before;
+
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({ archived_at: null, archived_by: null })
+    .eq('id', staffUserId)
+    .select('*')
+    .single();
+
+  if (error || !updated) {
+    throw new AppError('INTERNAL', 'Could not unarchive the user.', { cause: error });
+  }
+
+  await recordAudit({
+    actorUserId: user.id,
+    action: AuditAction.USER_UNARCHIVED,
+    entityType: 'profile',
+    entityId: updated.id,
+    before: { archived_at: before.archived_at },
+    after: { archived_at: null, is_active: updated.is_active },
+  });
+
+  return updated;
+}
+
 /** Self-service profile edit. Role and activation are not editable here. */
 export async function updateOwnProfile(
   user: SessionUser,
@@ -415,4 +547,23 @@ export async function updateOwnProfile(
 
 function requireAdminRole(user: SessionUser): void {
   if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Admin access is required.');
+}
+
+/**
+ * Refuses the change that would leave nobody able to administer the CRM.
+ *
+ * Shared by demotion, deactivation and archiving — three different-looking
+ * actions with the same failure mode at the end of them.
+ */
+async function assertNotLastActiveAdmin(): Promise<void> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'ADMIN')
+    .eq('is_active', true);
+
+  if ((count ?? 0) <= 1) {
+    throw new AppError('VALIDATION', 'This is the last active Admin. Promote someone else first.');
+  }
 }

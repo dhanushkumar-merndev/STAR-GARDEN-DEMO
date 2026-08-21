@@ -51,6 +51,9 @@ function toCsv(headers: string[], rows: unknown[][]): string {
   return `﻿${lines.join('\r\n')}\r\n`;
 }
 
+const EXPORT_PAGE_SIZE = 1000;
+const MAX_EXPORT_ROWS = 50_000;
+
 export async function exportLeadsCsv(
   user: SessionUser,
   filters: ExportFilters = {},
@@ -61,35 +64,47 @@ export async function exportLeadsCsv(
 
   const supabase = await createClient();
 
-  let query = supabase
-    .from('leads')
-    .select(
-      '*, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name), created_by_profile:profiles!leads_created_by_fkey(full_name)',
-    )
-    .order('created_at', { ascending: false })
-    .limit(10000);
-
-  if (filters.from) query = query.gte('created_at', filters.from);
-  if (filters.to) query = query.lte('created_at', filters.to);
-  if (filters.status && filters.status !== 'ALL') {
-    query = query.eq('status', filters.status as LeadStatus);
-  }
-  if (filters.source && filters.source !== 'ALL') {
-    query = query.eq('source', filters.source as LeadSource);
-  }
-  if (filters.assignedTo && filters.assignedTo !== 'ALL') {
-    query = filters.assignedTo === 'UNASSIGNED'
-      ? query.is('assigned_bdm_id', null)
-      : query.eq('assigned_bdm_id', filters.assignedTo);
-  }
-
-  const { data, error } = await query;
-  if (error) throw new AppError('INTERNAL', 'Could not build the export.', { cause: error });
-
-  const rows = (data ?? []) as unknown as (Record<string, unknown> & {
+  type LeadExportRow = Record<string, unknown> & {
     assigned_bdm: { full_name: string } | null;
     created_by_profile: { full_name: string } | null;
-  })[];
+  };
+  const rows: LeadExportRow[] = [];
+
+  for (let offset = 0; ; offset += EXPORT_PAGE_SIZE) {
+    let query = supabase
+      .from('leads')
+      .select(
+        'lead_code, customer_name, mobile_country_code, mobile_normalized, email, location_text, site_address, requirement_summary, source, status, design_required, next_action_at, last_activity_at, lost_reason, created_at, assigned_bdm:profiles!leads_assigned_bdm_id_fkey(full_name), created_by_profile:profiles!leads_created_by_fkey(full_name)',
+      )
+      .order('created_at', { ascending: false });
+
+    if (filters.from) query = query.gte('created_at', filters.from);
+    if (filters.to) query = query.lte('created_at', filters.to);
+    if (filters.status && filters.status !== 'ALL') {
+      query = query.eq('status', filters.status as LeadStatus);
+    }
+    if (filters.source && filters.source !== 'ALL') {
+      query = query.eq('source', filters.source as LeadSource);
+    }
+    if (filters.assignedTo && filters.assignedTo !== 'ALL') {
+      query = filters.assignedTo === 'UNASSIGNED'
+        ? query.is('assigned_bdm_id', null)
+        : query.eq('assigned_bdm_id', filters.assignedTo);
+    }
+
+    const { data, error } = await query.range(offset, offset + EXPORT_PAGE_SIZE - 1);
+    if (error) throw new AppError('INTERNAL', 'Could not build the export.', { cause: error });
+
+    const page = (data ?? []) as unknown as LeadExportRow[];
+    rows.push(...page);
+    if (rows.length > MAX_EXPORT_ROWS) {
+      throw new AppError(
+        'VALIDATION',
+        `This export has more than ${MAX_EXPORT_ROWS.toLocaleString('en-IN')} rows. Narrow the date or status filters and try again.`,
+      );
+    }
+    if (page.length < EXPORT_PAGE_SIZE) break;
+  }
 
   const csv = toCsv(
     [
@@ -152,24 +167,36 @@ export async function exportActivitiesCsv(
 
   const supabase = await createClient();
 
-  let query = supabase
-    .from('activities')
-    .select(
-      '*, lead:leads!activities_lead_id_fkey(lead_code, customer_name), actor:profiles!activities_created_by_fkey(full_name)',
-    )
-    .order('activity_at', { ascending: false })
-    .limit(10000);
-
-  if (filters.from) query = query.gte('activity_at', filters.from);
-  if (filters.to) query = query.lte('activity_at', filters.to);
-
-  const { data, error } = await query;
-  if (error) throw new AppError('INTERNAL', 'Could not build the export.', { cause: error });
-
-  const rows = (data ?? []) as unknown as (Record<string, unknown> & {
+  type ActivityExportRow = Record<string, unknown> & {
     lead: { lead_code: string; customer_name: string } | null;
     actor: { full_name: string } | null;
-  })[];
+  };
+  const rows: ActivityExportRow[] = [];
+
+  for (let offset = 0; ; offset += EXPORT_PAGE_SIZE) {
+    let query = supabase
+      .from('activities')
+      .select(
+        'type, outcome, notes, next_action, activity_at, lead:leads!activities_lead_id_fkey(lead_code, customer_name), actor:profiles!activities_created_by_fkey(full_name)',
+      )
+      .order('activity_at', { ascending: false });
+
+    if (filters.from) query = query.gte('activity_at', filters.from);
+    if (filters.to) query = query.lte('activity_at', filters.to);
+
+    const { data, error } = await query.range(offset, offset + EXPORT_PAGE_SIZE - 1);
+    if (error) throw new AppError('INTERNAL', 'Could not build the export.', { cause: error });
+
+    const page = (data ?? []) as unknown as ActivityExportRow[];
+    rows.push(...page);
+    if (rows.length > MAX_EXPORT_ROWS) {
+      throw new AppError(
+        'VALIDATION',
+        `This export has more than ${MAX_EXPORT_ROWS.toLocaleString('en-IN')} rows. Narrow the date filters and try again.`,
+      );
+    }
+    if (page.length < EXPORT_PAGE_SIZE) break;
+  }
 
   const csv = toCsv(
     ['Lead code', 'Customer', 'Type', 'Outcome', 'Notes', 'Next action', 'Recorded by', 'When'],

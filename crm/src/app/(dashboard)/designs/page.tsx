@@ -5,6 +5,10 @@ import { requirePageRole } from '@/lib/auth/session';
 import { listDesignProjects, type DesignScope } from '@/server/services/designs';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DesignStatusBadge, DueBadge } from '@/components/status';
+import { FilterTabs } from '@/components/ui/filter-tabs';
+import { countDesignProjectsByScope } from '@/server/services/designs';
+import { Pagination } from '@/components/ui/pagination';
+import { readPageParam } from '@/lib/pagination';
 
 export const metadata: Metadata = { title: 'Designs' };
 
@@ -38,7 +42,12 @@ export default async function DesignsPage({
           { value: 'DUE', label: 'Due soon' },
         ];
 
-  const projects = await listDesignProjects(user, { scope: scope as DesignScope, designerId });
+  const page = readPageParam(params);
+
+  const [{ items: projects, total, pageSize }, counts] = await Promise.all([
+    listDesignProjects(user, { scope: scope as DesignScope, designerId, page }),
+    countDesignProjectsByScope(user, scopes.map((option) => option.value), { designerId }),
+  ]);
 
   return (
     <>
@@ -47,29 +56,17 @@ export default async function DesignsPage({
         subtitle={
           user.role === 'DESIGNER'
             ? 'Projects assigned to you'
-            : `${projects.length} design ${projects.length === 1 ? 'project' : 'projects'}`
+            : `${total} design ${total === 1 ? 'project' : 'projects'}`
         }
       />
 
-      <nav className="-mx-3 mb-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-3 pb-2 lg:mx-0 lg:px-0" aria-label="Filter">
-        {scopes.map((option) => {
-          const active = option.value === scope;
-          return (
-            <Link
-              key={option.value}
-              href={`/designs?scope=${option.value}${designerId ? `&designer=${designerId}` : ''}`}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? 'tap flex shrink-0 snap-start items-center justify-center rounded-full bg-brand-600 px-4 text-sm font-medium whitespace-nowrap text-white'
-                  : 'tap flex shrink-0 snap-start items-center justify-center rounded-full border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-ink-muted'
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <FilterTabs
+        options={scopes.map((option) => ({ ...option, count: counts[option.value] ?? 0 }))}
+        value={scope}
+        label="Filter design projects"
+        hrefFor={(value) => `/designs?scope=${value}${designerId ? `&designer=${designerId}` : ''}`}
+        className="mb-4"
+      />
 
       <Card>
         {projects.length === 0 ? (
@@ -123,6 +120,14 @@ export default async function DesignsPage({
           </ul>
         )}
       </Card>
+
+      <Pagination
+        basePath="/designs"
+        params={params}
+        page={page}
+        total={total}
+        pageSize={pageSize}
+      />
     </>
   );
 }

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
+import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { AuditAction, recordAudit } from '@/lib/audit';
 import { notify, notifyMany, NotificationCopy } from '@/lib/notifications';
 import { sendStaffEmail } from '@/lib/email';
@@ -487,13 +488,75 @@ export async function assignExecutionStaff(
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
+export type ExecutionScope = 'MINE' | 'ACTIVE' | 'BLOCKED' | 'ALL';
+
+/** One RLS-scoped aggregate for every execution tab. */
+export async function countExecutionProjectsByScope(
+  user: SessionUser,
+  scopes: readonly ExecutionScope[],
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('execution_project_scope_counts', {
+    p_current_user_id: user.id,
+  });
+  if (error) {
+    console.warn('[execution] execution_project_scope_counts RPC unavailable; using count fallback', error);
+    const entries = await Promise.all(
+      scopes.map(async (scope) => {
+        let query = supabase.from('execution_projects').select('id', { count: 'exact', head: true });
+        if (scope === 'MINE') {
+          const { count, error: countError } = await supabase
+            .from('execution_projects')
+            .select('id, execution_assignees!inner(user_id)', { count: 'exact', head: true })
+            .eq('execution_assignees.user_id', user.id)
+            .neq('status', 'CANCELLED');
+          if (countError) {
+            throw new AppError('INTERNAL', 'Could not count execution projects.', { cause: countError });
+          }
+          return [scope, count ?? 0] as const;
+        }
+        if (scope === 'ACTIVE') query = query.not('status', 'in', '("COMPLETED","CANCELLED")');
+        else if (scope === 'BLOCKED') query = query.eq('status', 'BLOCKED');
+        else query = query.neq('status', 'CANCELLED');
+
+        const { count, error: countError } = await query;
+        if (countError) {
+          throw new AppError('INTERNAL', 'Could not count execution projects.', { cause: countError });
+        }
+        return [scope, count ?? 0] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
+  }
+
+  const values = data && !Array.isArray(data) && typeof data === 'object' ? data : {};
+  return Object.fromEntries(scopes.map((scope) => [scope, Number(values[scope] ?? 0)]));
+}
+
 export async function listExecutionProjects(
   user: SessionUser,
-  options: { scope?: 'MINE' | 'ACTIVE' | 'BLOCKED' | 'ALL'; limit?: number } = {},
+  options: {
+    scope?: 'MINE' | 'ACTIVE' | 'BLOCKED' | 'ALL';
+    limit?: number;
+    offset?: number;
+    /**
+     * Setting this switches the call into paged mode: `pageSize` rows at that
+     * offset, plus an exact `total`. Left unset the call keeps its
+     * `limit`/`offset` behaviour and skips the count, which is a full scan
+     * under RLS.
+     */
+    page?: number;
+    pageSize?: number;
+  } = {},
 ) {
   const supabase = await createClient();
   const scope = options.scope ?? (user.role === 'EXECUTION' ? 'MINE' : 'ALL');
-  const limit = options.limit ?? 100;
+  const paged = options.page !== undefined;
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = paged
+    ? Math.min(100, Math.max(5, options.pageSize ?? DEFAULT_PAGE_SIZE))
+    : Math.min(500, Math.max(1, options.limit ?? 100));
+  const offset = paged ? (page - 1) * pageSize : Math.max(0, options.offset ?? 0);
 
   const LEAD_JOIN =
     'lead:leads!execution_projects_lead_id_fkey(id, lead_code, customer_name, location_text)';
@@ -501,24 +564,33 @@ export async function listExecutionProjects(
   // "Mine" needs an inner join on the assignee table, which changes the row
   // shape, so it is built as its own query rather than mutated onto the others.
   if (scope === 'MINE') {
-    const { data, error } = await supabase
+    const { data, count, error } = await supabase
       .from('execution_projects')
-      .select(`*, ${LEAD_JOIN}, execution_assignees!inner(user_id)`)
+      .select(
+        `id, title, status, due_at, progress_percent, blocker_summary, ${LEAD_JOIN}, execution_assignees!inner(user_id)`,
+        paged ? { count: 'exact' } : undefined,
+      )
       .eq('execution_assignees.user_id', user.id)
       .neq('status', 'CANCELLED')
       .order('due_at', { ascending: true, nullsFirst: false })
-      .limit(limit);
+      .range(offset, offset + pageSize - 1);
 
     if (error) {
       throw new AppError('INTERNAL', 'Could not load execution projects.', { cause: error });
     }
-    return (data ?? []).map(({ execution_assignees, ...project }) => {
+    const items = (data ?? []).map(({ execution_assignees, ...project }) => {
       void execution_assignees;
       return project;
     });
+    return { items, total: count ?? items.length, page, pageSize };
   }
 
-  let query = supabase.from('execution_projects').select(`*, ${LEAD_JOIN}`);
+  let query = supabase
+    .from('execution_projects')
+    .select(
+      `id, title, status, due_at, progress_percent, blocker_summary, ${LEAD_JOIN}`,
+      paged ? { count: 'exact' } : undefined,
+    );
 
   if (scope === 'ACTIVE') {
     query = query.not('status', 'in', '("COMPLETED","CANCELLED")');
@@ -528,12 +600,14 @@ export async function listExecutionProjects(
     query = query.neq('status', 'CANCELLED');
   }
 
-  const { data, error } = await query
+  const { data, count, error } = await query
     .order('due_at', { ascending: true, nullsFirst: false })
-    .limit(limit);
+    .range(offset, offset + pageSize - 1);
 
   if (error) throw new AppError('INTERNAL', 'Could not load execution projects.', { cause: error });
-  return data ?? [];
+
+  const items = data ?? [];
+  return { items, total: count ?? items.length, page, pageSize };
 }
 
 export async function getExecutionProjectDetail(user: SessionUser, executionProjectId: string) {
@@ -583,34 +657,48 @@ export async function executionCounts(user: SessionUser) {
   const supabase = await createClient();
   const now = new Date();
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-
-  const taskQuery = () => {
-    const q = supabase
-      .from('execution_tasks')
-      .select('id', { count: 'exact', head: true })
-      .not('status', 'in', '("COMPLETED","CANCELLED")');
-    return user.role === 'EXECUTION' ? q.eq('assigned_to', user.id) : q;
-  };
-
-  const [dueToday, overdue, blocked, nearingCompletion] = await Promise.all([
-    taskQuery().lte('due_at', endOfToday).gte('due_at', now.toISOString()),
-    taskQuery().lt('due_at', now.toISOString()),
-    supabase
-      .from('execution_projects')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'BLOCKED'),
-    supabase
-      .from('execution_projects')
-      .select('id', { count: 'exact', head: true })
-      .gte('progress_percent', 80)
-      .not('status', 'in', '("COMPLETED","CANCELLED")'),
-  ]);
+  const { data, error } = await supabase.rpc('execution_work_counts', {
+    p_task_assignee: user.role === 'EXECUTION' ? user.id : null,
+    p_now: now.toISOString(),
+    p_end_today: endOfToday,
+  });
+  if (error) {
+    console.warn('[execution] execution_work_counts RPC unavailable; using count fallback', error);
+    const taskQuery = () => {
+      const query = supabase
+        .from('execution_tasks')
+        .select('id', { count: 'exact', head: true })
+        .not('status', 'in', '("COMPLETED","CANCELLED")');
+      return user.role === 'EXECUTION' ? query.eq('assigned_to', user.id) : query;
+    };
+    const [dueToday, overdue, blocked, nearingCompletion] = await Promise.all([
+      taskQuery().gte('due_at', now.toISOString()).lte('due_at', endOfToday),
+      taskQuery().lt('due_at', now.toISOString()),
+      supabase.from('execution_projects').select('id', { count: 'exact', head: true }).eq('status', 'BLOCKED'),
+      supabase
+        .from('execution_projects')
+        .select('id', { count: 'exact', head: true })
+        .gte('progress_percent', 80)
+        .not('status', 'in', '("COMPLETED","CANCELLED")'),
+    ]);
+    const queryError = dueToday.error ?? overdue.error ?? blocked.error ?? nearingCompletion.error;
+    if (queryError) {
+      throw new AppError('INTERNAL', 'Could not count execution work.', { cause: queryError });
+    }
+    return {
+      dueToday: dueToday.count ?? 0,
+      overdue: overdue.count ?? 0,
+      blocked: blocked.count ?? 0,
+      nearingCompletion: nearingCompletion.count ?? 0,
+    };
+  }
+  const counts = data && !Array.isArray(data) && typeof data === 'object' ? data : {};
 
   return {
-    dueToday: dueToday.count ?? 0,
-    overdue: overdue.count ?? 0,
-    blocked: blocked.count ?? 0,
-    nearingCompletion: nearingCompletion.count ?? 0,
+    dueToday: Number(counts.DUE_TODAY ?? 0),
+    overdue: Number(counts.OVERDUE ?? 0),
+    blocked: Number(counts.BLOCKED ?? 0),
+    nearingCompletion: Number(counts.NEARING_COMPLETION ?? 0),
   };
 }
 

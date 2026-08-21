@@ -73,41 +73,98 @@
     border-color: var(--color-line);
   }
 
+  /**
+   * Horizontal scrolling is never correct at the document level.
+   *
+   * `overflow-x` was set on `body` alone, which relies on the browser
+   * propagating it up to the viewport — and that propagation only happens while
+   * `html` itself is `visible`, so a single stray wide element could still drag
+   * the whole page sideways on a phone. Setting it on both, with a hard
+   * `max-width`, removes the dependency on that rule.
+   *
+   * Anything genuinely wider than the screen — the month calendar, the sales
+   * table, the filter strips — scrolls inside its own container.
+   */
+  html,
+  body {
+    max-width: 100%;
+    /* `hidden` creates a scroll container and makes sticky descendants such as
+       the desktop header/sidebar move with the dashboard. `clip` prevents the
+       same horizontal spill without changing their sticky containing block. */
+    overflow-x: clip;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
-    scrollbar-color: var(--color-brand-400) var(--color-surface-muted);
-    scrollbar-width: thin;
   }
 
-  *::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-  }
+  /**
+   * Custom scrollbars are for mice only.
+   *
+   * A touch device draws overlay scrollbars that fade out and take no layout
+   * space. Styling them turns them into permanent 12px green bars that sit over
+   * the bottom of the screen — which on a phone means a band across the fixed
+   * navigation bar, stealing taps meant for Leads, Tasks and Landscape design.
+   *
+   * `pointer: fine` is the right gate rather than a width breakpoint: it asks
+   * whether there is a precise pointer to aim a 12px target with, which is the
+   * actual question.
+   */
+  @media (pointer: fine) {
+    html {
+      scrollbar-color: var(--color-brand-400) var(--color-surface-muted);
+      scrollbar-width: thin;
+    }
 
-  *::-webkit-scrollbar-track {
-    background: var(--color-surface-muted);
-    border-radius: 999px;
-  }
+    *::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
 
-  *::-webkit-scrollbar-thumb {
-    background: var(--color-brand-400);
-    border: 3px solid var(--color-surface-muted);
-    border-radius: 999px;
-  }
+    *::-webkit-scrollbar-track {
+      background: var(--color-surface-muted);
+      border-radius: 999px;
+    }
 
-  *::-webkit-scrollbar-thumb:hover {
-    background: var(--color-brand-600);
+    *::-webkit-scrollbar-thumb {
+      background: var(--color-brand-400);
+      border: 3px solid var(--color-surface-muted);
+      border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--color-brand-600);
+    }
   }
 
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    overflow-x: hidden;
-    /* Room for the fixed mobile nav bar plus the iOS home indicator. */
-    padding-bottom: env(safe-area-inset-bottom);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* The authenticated mobile shell owns vertical scrolling. Without locking
+     the document as well, some mobile browsers allow the body to scroll past
+     the 100dvh shell and reveal an empty band underneath the bottom nav. */
+  @media (max-width: 63.999rem) {
+    html:has(.crm-shell),
+    body:has(.crm-shell) {
+      height: 100dvh;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    /* Radix dialogs normally add a right margin equal to the removed window
+       scrollbar. The mobile CRM has no window scrollbar—the main workspace is
+       its own scroller—so that compensation only narrows the page when Menu or
+       a bottom sheet opens. */
+    body[data-scroll-locked]:has(.crm-shell) {
+      margin-right: 0 !important;
+      padding-right: 0 !important;
+      --removed-body-scroll-bar-size: 0px;
+    }
   }
 
   /* 16px minimum on form controls stops iOS Safari zooming on focus — a

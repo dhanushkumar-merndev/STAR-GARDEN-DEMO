@@ -4,30 +4,25 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { LuSearch } from 'react-icons/lu';
 import { Button, Input, Select } from '@/components/ui';
-import { defaultStatusFilter } from '@/components/leads/helpers';
-import type { LeadStatus } from '@/types/database';
+import { buildLeadsHref, defaultStatusFilter } from '@/lib/leads/status-filters';
+import type { LeadListQuery } from '@/lib/leads/status-filters';
 
 type Person = { id: string; full_name: string };
 
-const STATUS_FILTERS: { value: LeadStatus | 'ALL'; label: string }[] = [
-  { value: 'ALL', label: 'All statuses' },
-  // Labelled for the desk, not for the schema: the status is still UNASSIGNED
-  // in the database (and still badges as "Unassigned" on the lead itself) —
-  // this list just calls it what the team calls it.
-  { value: 'UNASSIGNED', label: 'New leads' },
-  { value: 'ASSIGNED', label: 'Assigned' },
-  { value: 'CONTACTED', label: 'Contacted' },
-  { value: 'FOLLOW_UP', label: 'Follow-up' },
-  { value: 'QUALIFIED', label: 'Qualified' },
-  { value: 'LOST', label: 'Lost' },
-  { value: 'CLOSED', label: 'Closed' },
-];
-
-
 /**
- * Radix Select is intentionally not left to native form serialization here.
- * Applying filters navigates from its own controlled values, so the visual
- * selection and the database query can never drift apart.
+ * Lead filters.
+ *
+ * Everything except the search box applies the moment it is touched. An Apply
+ * button on a filter bar is a step that adds nothing: there is no draft state
+ * worth protecting, no validation to run, and it reliably leaves people looking
+ * at a list that does not match the controls above it.
+ *
+ * Search is the exception and keeps its Enter-to-apply, because navigating on
+ * every keystroke would remount this form — and take the cursor with it.
+ *
+ * The URL stays the single source of truth (§16: returning from a lead restores
+ * the exact view), so each control navigates rather than holding a selection
+ * the query does not know about.
  */
 export function LeadFilterForm({
   isAdmin,
@@ -36,94 +31,105 @@ export function LeadFilterForm({
 }: {
   isAdmin: boolean;
   bdms: Person[];
-  initial: {
-    q: string;
-    status: LeadStatus | 'ALL';
-    source: string;
-    assignedTo: string;
-    scope: string;
-  };
+  initial: LeadListQuery;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initial.q);
-  const [status, setStatus] = React.useState(initial.status);
-  const [source, setSource] = React.useState(initial.source);
-  const [assignedTo, setAssignedTo] = React.useState(initial.assignedTo);
-  const [scope, setScope] = React.useState(initial.scope);
 
-  function apply(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const query = new URLSearchParams();
-    if (q.trim()) query.set('q', q.trim());
-    // Always carried, unlike the other filters: an absent status means "use the
-    // default", which is not ALL for an Admin. Omitting it when ALL is chosen
-    // would quietly bounce them back to New leads.
-    query.set('status', status);
-    if (source !== 'ALL') query.set('source', source);
-    if (isAdmin) {
-      if (assignedTo !== 'ALL') query.set('assignedTo', assignedTo);
-    } else if (scope !== 'MINE') {
-      query.set('scope', scope);
-    }
-
-    const suffix = query.toString();
-    router.push(suffix ? `/leads?${suffix}` : '/leads');
+  /**
+   * Builds the next URL from what is on screen, with one control overridden.
+   *
+   * Taking the rest from `initial` rather than from local state is deliberate:
+   * `initial` is what the URL currently says, and every control but the search
+   * box writes straight to the URL, so the two cannot drift.
+   */
+  function push(overrides: Partial<LeadListQuery>) {
+    router.push(buildLeadsHref({ ...initial, q }, isAdmin, overrides));
   }
 
   function clear() {
     setQ('');
     // Clearing returns the list to how it opens, which is not the same as
     // selecting every status.
-    setStatus(defaultStatusFilter(isAdmin));
-    setSource('ALL');
-    setAssignedTo('ALL');
-    setScope('MINE');
-    router.push('/leads');
+    router.push(`/leads?status=${defaultStatusFilter(isAdmin)}`);
   }
 
   return (
-    <form onSubmit={apply} className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-4">
-      <div className="relative sm:col-span-2 lg:col-span-1">
-        <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
-        <Input
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-          placeholder="Name, number or code"
-          className="pl-9"
-          aria-label="Search leads"
-        />
+    <div className="space-y-3 lg:p-3">
+      {/* Controls first, stages under them. The strip is the control people
+          touch most, so it sits closest to the list it filters rather than
+          being separated from it by three dropdowns. Clear ends the row: it
+          undoes everything on that line, so it belongs at the end of it. */}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            push({});
+          }}
+          className="relative sm:col-span-2 lg:col-span-1"
+        >
+          <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
+          <Input
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+            placeholder="Name, number or code — press Enter"
+            className="pl-9"
+            aria-label="Search leads"
+          />
+        </form>
+
+        <Select
+          value={initial.source}
+          onChange={(event) => push({ source: event.target.value })}
+          aria-label="Filter by source"
+        >
+          <option value="ALL">All sources</option>
+          <option value="META_FACEBOOK">Facebook</option>
+          <option value="META_INSTAGRAM">Instagram</option>
+          <option value="WEBSITE">Website</option>
+          <option value="MANUAL">Manual</option>
+          <option value="OTHER">Other</option>
+        </Select>
+
+        {isAdmin ? (
+          <Select
+            value={initial.assignedTo}
+            onChange={(event) => push({ assignedTo: event.target.value })}
+            aria-label="Filter by team member"
+          >
+            {/* "Members", not "owners": the team calls each other members, and
+                the list below is literally the staff list. "Unassigned" stays
+                as it is — here it means nobody holds the lead, which is a
+                different statement from the "New leads" stage above. */}
+            <option value="ALL">All members</option>
+            <option value="UNASSIGNED">Unassigned</option>
+            {bdms.map((bdm) => (
+              <option key={bdm.id} value={bdm.id}>
+                {bdm.full_name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <Select
+            value={initial.scope}
+            onChange={(event) => push({ scope: event.target.value })}
+            aria-label="Filter by scope"
+          >
+            <option value="MINE">My leads</option>
+            <option value="NO_NEXT_ACTION">No next action</option>
+          </Select>
+        )}
+
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={clear}
+          className="justify-self-start sm:col-span-2 lg:col-span-1 lg:justify-self-end"
+        >
+          Clear
+        </Button>
       </div>
 
-      <Select value={status} onChange={(event) => setStatus(event.target.value as LeadStatus | 'ALL')} aria-label="Filter by status">
-        {STATUS_FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </Select>
-
-      <Select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Filter by source">
-        <option value="ALL">All sources</option>
-        <option value="META_FACEBOOK">Facebook</option>
-        <option value="META_INSTAGRAM">Instagram</option>
-        <option value="WEBSITE">Website</option>
-        <option value="MANUAL">Manual</option>
-        <option value="OTHER">Other</option>
-      </Select>
-
-      {isAdmin ? (
-        <Select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} aria-label="Filter by owner">
-          <option value="ALL">All owners</option>
-          <option value="UNASSIGNED">Unassigned</option>
-          {bdms.map((bdm) => <option key={bdm.id} value={bdm.id}>{bdm.full_name}</option>)}
-        </Select>
-      ) : (
-        <Select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Filter by scope">
-          <option value="MINE">My leads</option>
-          <option value="NO_NEXT_ACTION">No next action</option>
-        </Select>
-      )}
-
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
-        <Button type="submit" size="sm">Apply</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>
-      </div>
-    </form>
+    </div>
   );
 }

@@ -23,6 +23,8 @@ export const AuditAction = {
   USER_UPDATED: 'user.updated',
   USER_DEACTIVATED: 'user.deactivated',
   USER_REACTIVATED: 'user.reactivated',
+  USER_ARCHIVED: 'user.archived',
+  USER_UNARCHIVED: 'user.unarchived',
 
   LEAD_CREATED: 'lead.created',
   LEAD_UPDATED: 'lead.updated',
