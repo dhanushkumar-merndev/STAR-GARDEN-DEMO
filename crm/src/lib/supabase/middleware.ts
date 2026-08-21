@@ -9,6 +9,11 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/auth/callback',
   '/manifest.webmanifest',
+  // Google's OAuth branding review fetches these signed out: the homepage has
+  // to explain what the application is for, and the policy has to be readable
+  // without an account. Bouncing either to /login fails the review.
+  '/home',
+  '/privacy',
 ];
 
 /** API routes that authenticate by their own means (signature, secret, CORS). */

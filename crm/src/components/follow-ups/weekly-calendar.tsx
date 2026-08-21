@@ -11,12 +11,12 @@ import {
   startOfWeek,
 } from 'date-fns';
 import { Card, CardBody, CardHeader } from '@/components/ui';
-import type { FollowUpWithLead } from '@/server/services/follow-ups';
+import type { FollowUpCalendarDay } from '@/server/services/follow-ups';
 
 export type CalendarView = 'week' | 'month';
 
 /** A month cell is a seventh of the width, so it shows fewer before collapsing to a count. */
-const MAX_ITEMS_PER_DAY: Record<CalendarView, number> = { week: 3, month: 2 };
+export const MAX_ITEMS_PER_DAY: Record<CalendarView, number> = { week: 3, month: 3 };
 
 /**
  * Follow-up overview, by week or by month.
@@ -28,12 +28,13 @@ const MAX_ITEMS_PER_DAY: Record<CalendarView, number> = { week: 3, month: 2 };
  * across a back/forward navigation (§16 "preserve filters").
  */
 export function FollowUpCalendar({
-  items,
+  days: calendarDays,
   view,
   scope,
   selectedDate,
 }: {
-  items: FollowUpWithLead[];
+  /** Per-day totals from `getFollowUpCalendar`, already capped server-side. */
+  days: FollowUpCalendarDay[];
   view: CalendarView;
   scope: string;
   /** `yyyy-mm-dd` currently being drilled into, so its cell reads as chosen. */
@@ -49,8 +50,10 @@ export function FollowUpCalendar({
   const end = isMonth ? endOfWeek(endOfMonth(today), { weekStartsOn: 1 }) : addDays(start, 6);
 
   const days = eachDayOfInterval({ start, end });
-  const scheduled = items.filter((item) => item.status === 'OPEN' || item.status === 'OVERDUE');
   const limit = MAX_ITEMS_PER_DAY[view];
+  // Keyed lookup rather than a scan per cell: the aggregate already grouped
+  // these by day, and the grid draws up to 42 of them.
+  const byDay = new Map(calendarDays.map((entry) => [entry.day, entry]));
 
   return (
     <Card className="mb-4">
@@ -83,9 +86,11 @@ export function FollowUpCalendar({
               : null}
 
             {days.map((day) => {
-              const dayItems = scheduled.filter((item) => isSameDay(new Date(item.due_at), day));
-              const visibleItems = dayItems.slice(0, limit);
-              const moreCount = dayItems.length - visibleItems.length;
+              const dayKeyLookup = format(day, 'yyyy-MM-dd');
+              const entry = byDay.get(dayKeyLookup);
+              const visibleItems = entry?.items ?? [];
+              const dayTotal = entry?.total ?? 0;
+              const moreCount = dayTotal - visibleItems.length;
               const isToday = isSameDay(day, today);
               // Leading/trailing days from the neighbouring month keep the grid
               // rectangular, but must not read as part of this month's workload.
@@ -145,7 +150,7 @@ export function FollowUpCalendar({
                           {format(new Date(item.due_at), 'h:mm a')}
                         </span>
                         <span className="block truncate text-ink-muted">
-                          {item.lead?.customer_name ?? item.title}
+                          {item.customer_name ?? item.title}
                         </span>
                       </Link>
                     ))}
@@ -160,7 +165,7 @@ export function FollowUpCalendar({
                         +{moreCount} more
                       </Link>
                     ) : null}
-                    {dayItems.length === 0 && !isMonth ? (
+                    {dayTotal === 0 && !isMonth ? (
                       <p className="pt-2 text-xs text-ink-subtle">No follow-ups</p>
                     ) : null}
                   </div>

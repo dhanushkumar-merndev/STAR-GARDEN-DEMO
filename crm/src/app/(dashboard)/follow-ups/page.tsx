@@ -2,10 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LuClipboardList } from 'react-icons/lu';
 import { requirePageRole } from '@/lib/auth/session';
-import { listFollowUps, type FollowUpScope } from '@/server/services/follow-ups';
+import { getFollowUpCalendar, listFollowUps, type FollowUpScope } from '@/server/services/follow-ups';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { DueBadge, FollowUpStatusBadge } from '@/components/status';
-import { FollowUpCalendar, type CalendarView } from '@/components/follow-ups/weekly-calendar';
+import {
+  FollowUpCalendar,
+  MAX_ITEMS_PER_DAY,
+  type CalendarView,
+} from '@/components/follow-ups/weekly-calendar';
 import { formatDateTime } from '@/lib/utils/format';
 import { FilterTabs } from '@/components/ui/filter-tabs';
 import { countFollowUpsByScope } from '@/server/services/follow-ups';
@@ -60,17 +64,17 @@ export default async function FollowUpsPage({
       ? endOfWeek(endOfMonth(today), { weekStartsOn: 1 })
       : addDays(calendarStart, 6);
 
-  const [{ items, total, pageSize }, calendar, counts] = await Promise.all([
+  const [{ items, total, pageSize }, calendarDays, counts] = await Promise.all([
     listFollowUps(user, { scope, day, page }),
-    listFollowUps(user, {
-      scope: 'ALL',
+    // Aggregated in Postgres: the grid needs per-day totals plus the handful of
+    // entries each cell shows, not every row in the month.
+    getFollowUpCalendar(user, {
       from: calendarStart.toISOString(),
       to: calendarEnd.toISOString(),
-      limit: 500,
+      perDay: MAX_ITEMS_PER_DAY[view],
     }),
     countFollowUpsByScope(user, SCOPES.map((option) => option.value)),
   ]);
-  const calendarItems = calendar.items;
 
   return (
     <>
@@ -87,7 +91,7 @@ export default async function FollowUpsPage({
         className="mb-4"
       />
 
-      <FollowUpCalendar items={calendarItems} view={view} scope={scope} selectedDate={day} />
+      <FollowUpCalendar days={calendarDays} view={view} scope={scope} selectedDate={day} />
 
       <Card>
         {/* A filtered list that does not say so is the reason people think a

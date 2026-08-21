@@ -292,6 +292,52 @@ async function countFollowUpsByScopeFallback(
   return Object.fromEntries(entries);
 }
 
+/** One cell of the calendar grid: the day's total, and the few entries it shows. */
+export interface FollowUpCalendarDay {
+  /** `yyyy-mm-dd`, bucketed in Asia/Kolkata by the RPC. */
+  day: string;
+  total: number;
+  items: {
+    id: string;
+    lead_id: string;
+    due_at: string;
+    status: string;
+    title: string;
+    customer_name: string | null;
+  }[];
+}
+
+/**
+ * The calendar grid, aggregated in Postgres.
+ *
+ * Deliberately not `listFollowUps`: the grid draws two or three entries per day
+ * plus a count, so fetching every follow-up in the month to group them in the
+ * component was both wasteful and wrong. It was capped at a few hundred rows
+ * ordered by `due_at`, so a busy first week consumed the budget and every later
+ * day rendered blank while its drill-down reported the true number.
+ */
+export async function getFollowUpCalendar(
+  user: SessionUser,
+  options: { from: string; to: string; perDay: number },
+): Promise<FollowUpCalendarDay[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc('follow_up_calendar', {
+    p_from: options.from,
+    p_to: options.to,
+    // Admins see the whole desk; everyone else sees their own queue — the same
+    // rule listFollowUps applies.
+    p_assigned_to: user.isAdmin ? null : user.id,
+    p_per_day: options.perDay,
+  });
+
+  if (error) {
+    throw new AppError('INTERNAL', 'Could not load the follow-up calendar.', { cause: error });
+  }
+
+  return (Array.isArray(data) ? data : []) as unknown as FollowUpCalendarDay[];
+}
+
 export async function listFollowUps(
   user: SessionUser,
   options: {

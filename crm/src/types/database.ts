@@ -1042,6 +1042,15 @@ export type Database = {
         };
         Returns: Json;
       };
+      follow_up_calendar: {
+        Args: {
+          p_from: string;
+          p_to: string;
+          p_assigned_to: string | null;
+          p_per_day: number;
+        };
+        Returns: Json;
+      };
       site_visit_scope_counts: {
         Args: { p_now: string; p_start_today: string; p_end_today: string };
         Returns: Json;
