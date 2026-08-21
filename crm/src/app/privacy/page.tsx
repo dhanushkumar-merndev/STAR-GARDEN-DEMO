@@ -20,7 +20,7 @@ export const metadata: Metadata = {
  */
 
 const LAST_UPDATED = '21 August 2026';
-const CONTACT_EMAIL = 'stargrowthhub@gmail.com';
+const CONTACT_EMAIL = 'abhi@stargardens.in';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
