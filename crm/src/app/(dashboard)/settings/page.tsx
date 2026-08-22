@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: 'Settings' };
 
 /** Admin settings hub (AGENTS.md §11.7). */
 export default async function SettingsPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
 
   const supabase = await createClient();
   const [settings, business, normalization, convertibleVisits] = await Promise.all([

@@ -1,5 +1,7 @@
 'use client';
 
+import { searchExecutionStaffAction } from '@/server/actions/people';
+
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -195,7 +197,13 @@ export function AddTaskDialog({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Assign to" htmlFor="assigned_to">
-                <Select id="assigned_to" name="assigned_to" defaultValue="">
+                <Select
+                  id="assigned_to"
+                  name="assigned_to"
+                  searchable
+                  onSearch={searchExecutionStaffAction}
+                  defaultValue=""
+                >
                   <option value="">Unassigned</option>
                   {staff.map((person) => (
                     <option key={person.id} value={person.id}>

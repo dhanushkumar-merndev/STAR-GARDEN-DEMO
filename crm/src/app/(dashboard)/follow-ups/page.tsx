@@ -40,7 +40,7 @@ export default async function FollowUpsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN', 'BDM');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM');
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'OVERDUE') as FollowUpScope;
   const view: CalendarView = params.view === 'month' ? 'month' : 'week';
@@ -108,8 +108,11 @@ export default async function FollowUpsPage({
                 })}
               </span>
               {' · '}
+              {/* `total`, not `items.length`: the list is paginated, so counting
+                  the rows on screen would tell a busy day it has 20 follow-ups
+                  when the calendar cell that was clicked said 82. */}
               <span className="text-ink-muted">
-                {items.length} follow-up{items.length === 1 ? '' : 's'}
+                {total} open follow-up{total === 1 ? '' : 's'}
               </span>
             </p>
             <Link

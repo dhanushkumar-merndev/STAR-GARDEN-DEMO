@@ -15,6 +15,7 @@ import {
 import { requirePageUser } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { getSiteVisitDetail } from '@/server/services/site-visits';
+import { listActiveDesigners } from '@/server/services/leads';
 import { getSettings } from '@/lib/settings';
 import { canWriteLead } from '@/lib/permissions';
 import { Alert, Card, CardBody, CardHeader } from '@/components/ui';
@@ -56,6 +57,9 @@ export default async function SiteVisitPage({
 
   const { visit, lead, isAttendee, attendees, files } = detail;
   const settings = await getSettings();
+  // For the completion dialog's designer picker. One page of names, with the
+  // visit's own designer pinned in so a capped list still shows the default.
+  const designers = await listActiveDesigners({ include: [visit.assigned_designer_id] });
   // The visit's own flag, not the current setting: a visit runs to the end in
   // the mode it was booked in (§8.3).
   const journeyEnabled = visit.journey_tracking_enabled;
@@ -161,6 +165,8 @@ export default async function SiteVisitPage({
                   siteVisitId={visit.id}
                   triggerLabel="Site visit completed"
                   photoUploadMaxSizeMb={settings.maxUploadSizeMb}
+                  designers={designers}
+                  defaultDesignerId={visit.assigned_designer_id}
                 />
               ) : null}
 
@@ -225,7 +231,11 @@ export default async function SiteVisitPage({
                     <CheckOutButton siteVisitId={visit.id} maxSizeMb={settings.maxUploadSizeMb} />
                   ) : canManage ? (
                     // Completing is the step after check-out, not a parallel option.
-                    <CompleteVisitDialog siteVisitId={visit.id} />
+                    <CompleteVisitDialog
+                      siteVisitId={visit.id}
+                      designers={designers}
+                      defaultDesignerId={visit.assigned_designer_id}
+                    />
                   ) : null
                 ) : null}
 

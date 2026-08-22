@@ -46,6 +46,7 @@ export default async function PortalPage() {
             height={32}
             priority
             className="h-8 w-auto object-contain"
+            style={{ width: 'auto' }}
           />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="sm">

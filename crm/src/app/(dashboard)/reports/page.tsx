@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { requirePageRole } from '@/lib/auth/session';
 import { getAdminDashboard } from '@/server/services/dashboard';
 import { listAssignableBdms } from '@/server/services/leads';
+import { searchOwnersAction } from '@/server/actions/people';
 import { Card, CardBody, CardHeader, PageHeader, Select, StatTile } from '@/components/ui';
 import { humanizeEnum } from '@/lib/utils/format';
 import { LuDownload } from 'react-icons/lu';
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: 'Reports' };
  * is enforced in the route, not by hiding this page.
  */
 export default async function ReportsPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const data = await getAdminDashboard(user);
   const bdms = await listAssignableBdms();
 
@@ -123,7 +124,7 @@ function ExportForm({ bdms }: { bdms: Awaited<ReturnType<typeof listAssignableBd
       </label>
       <label className="space-y-1.5">
         <span className="block text-sm font-medium text-ink">Owner</span>
-        <Select name="assignedTo" className="h-11 w-full" defaultValue="ALL">
+        <Select name="assignedTo" searchable onSearch={searchOwnersAction} className="h-11 w-full" defaultValue="ALL">
           <option value="ALL">Everyone</option><option value="UNASSIGNED">Unassigned</option>
           {bdms.map((bdm) => <option key={bdm.id} value={bdm.id}>{bdm.full_name}</option>)}
         </Select>

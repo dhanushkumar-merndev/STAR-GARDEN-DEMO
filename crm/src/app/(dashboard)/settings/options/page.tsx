@@ -30,7 +30,7 @@ const GROUPS = [
 ];
 
 export default async function OptionsPage() {
-  await requirePageRole('ADMIN');
+  await requirePageRole('SUPER_ADMIN');
   const supabase = await createClient();
 
   const { data: options } = await supabase

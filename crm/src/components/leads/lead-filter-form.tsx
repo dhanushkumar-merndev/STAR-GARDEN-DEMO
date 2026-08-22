@@ -2,12 +2,19 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { LuSearch } from 'react-icons/lu';
+import { LuLoaderCircle, LuSearch } from 'react-icons/lu';
 import { Button, Input, Select } from '@/components/ui';
 import { buildLeadsHref, defaultStatusFilter } from '@/lib/leads/status-filters';
+import { searchOwnersAction } from '@/server/actions/people';
 import type { LeadListQuery } from '@/lib/leads/status-filters';
 
 type Person = { id: string; full_name: string };
+
+/** Matches the people picker's own debounce, so the two feel like one control. */
+const SEARCH_DEBOUNCE_MS = 500;
+
+/** Below three characters the lead search's trigram indexes cannot be used. */
+const SEARCH_MIN_LENGTH = 3;
 
 /**
  * Lead filters.
@@ -35,6 +42,7 @@ export function LeadFilterForm({
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initial.q);
+  const [searching, startSearch] = React.useTransition();
 
   /**
    * Builds the next URL from what is on screen, with one control overridden.
@@ -45,6 +53,43 @@ export function LeadFilterForm({
    */
   function push(overrides: Partial<LeadListQuery>) {
     router.push(buildLeadsHref({ ...initial, q }, isAdmin, overrides));
+  }
+
+  /**
+   * Search applies as you type, once there is a word to search for.
+   *
+   * Three things keep that from being expensive. The `SEARCH_DEBOUNCE_MS`
+   * wait means a name typed at speed costs one query rather than one per
+   * letter; `SEARCH_MIN_LENGTH` holds it back until the lead search's trigram
+   * indexes can actually serve the `ilike` (below three characters they fall
+   * back to a scan, and match most of the table anyway); and `replace` keeps
+   * the Back button pointing at the view before this search rather than at
+   * every intermediate word.
+   *
+   * Enter still applies immediately — including the one and two letter
+   * queries the debounce declines to run on its own.
+   */
+  const pending = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => () => {
+    if (pending.current) clearTimeout(pending.current);
+  }, []);
+
+  function onSearchChange(next: string) {
+    setQ(next);
+    if (pending.current) clearTimeout(pending.current);
+
+    // Under the minimum there is no search — including on the way back down,
+    // so deleting "abcd" to "ab" restores the unfiltered list rather than
+    // leaving the old four-letter search applied under a two-letter box.
+    const target = next.trim().length >= SEARCH_MIN_LENGTH ? next : '';
+    if (target.trim() === (initial.q ?? '').trim()) return;
+
+    pending.current = setTimeout(() => {
+      startSearch(() => {
+        router.replace(buildLeadsHref({ ...initial, q: target }, isAdmin, {}));
+      });
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   function clear() {
@@ -64,15 +109,23 @@ export function LeadFilterForm({
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if (pending.current) clearTimeout(pending.current);
             push({});
           }}
           className="relative sm:col-span-2 lg:col-span-1"
         >
-          <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
+          {searching ? (
+            <LuLoaderCircle
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 animate-spin text-brand-600"
+              aria-hidden="true"
+            />
+          ) : (
+            <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
+          )}
           <Input
             value={q}
-            onChange={(event) => setQ(event.target.value)}
-            placeholder="Name, number or code — press Enter"
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Name, number or code"
             className="pl-9"
             aria-label="Search leads"
           />
@@ -96,6 +149,8 @@ export function LeadFilterForm({
             value={initial.assignedTo}
             onChange={(event) => push({ assignedTo: event.target.value })}
             aria-label="Filter by team member"
+            searchable
+            onSearch={searchOwnersAction}
           >
             {/* "Members", not "owners": the team calls each other members, and
                 the list below is literally the staff list. "Unassigned" stays

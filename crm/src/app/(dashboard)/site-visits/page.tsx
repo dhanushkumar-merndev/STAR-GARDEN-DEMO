@@ -27,7 +27,7 @@ export default async function SiteVisitsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN', 'BDM', 'DESIGNER');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER');
   const params = await searchParams;
   const scope = (typeof params.scope === 'string' ? params.scope : 'UPCOMING') as
     (typeof SCOPES)[number]['value'];

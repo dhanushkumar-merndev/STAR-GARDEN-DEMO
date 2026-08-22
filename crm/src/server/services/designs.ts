@@ -99,7 +99,11 @@ export async function assignDesigner(
     .eq('id', input.designer_id)
     .maybeSingle();
 
-  if (!designer || !designer.is_active || designer.role !== 'DESIGNER') {
+  if (
+    !designer ||
+    !designer.is_active ||
+    !['LANDSCAPER', 'ADMIN', 'SUPER_ADMIN'].includes(designer.role)
+  ) {
     throw new AppError('VALIDATION', 'Pick an active Landscape Designer.', {
       fields: { designer_id: 'This user is not an active designer.' },
     });
@@ -531,7 +535,7 @@ export async function listDesignProjects(
       paged ? { count: 'exact' } : undefined,
     );
 
-  query = applyDesignScope(query, options.scope ?? (user.role === 'DESIGNER' ? 'MINE' : 'ALL'), user.id);
+  query = applyDesignScope(query, options.scope ?? (user.role === 'LANDSCAPER' ? 'MINE' : 'ALL'), user.id);
 
   if (options.designerId) query = query.eq('assigned_designer_id', options.designerId);
 
@@ -588,7 +592,7 @@ export async function designCounts(user: SessionUser) {
   const counts = await countDesignProjectsByScope(
     user,
     ['AWAITING_ASSIGNMENT', 'READY_FOR_REVIEW', 'DUE', 'REVISION_REQUESTED'],
-    { designerId: user.role === 'DESIGNER' ? user.id : undefined },
+    { designerId: user.role === 'LANDSCAPER' ? user.id : undefined },
   );
 
   return {

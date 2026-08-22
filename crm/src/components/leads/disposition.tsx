@@ -1,5 +1,7 @@
 'use client';
 
+import { searchDesignersAction } from '@/server/actions/people';
+
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -286,7 +288,14 @@ export function DispositionButtons({
                       required
                       error={fieldErrors.visit_designer_id}
                     >
-                      <Select id="visit_designer_id" name="visit_designer_id" defaultValue="" required>
+                      <Select
+                        id="visit_designer_id"
+                        name="visit_designer_id"
+                        searchable
+                        onSearch={searchDesignersAction}
+                        defaultValue=""
+                        required
+                      >
                         <option value="" disabled>Choose a designer</option>
                         {designers.map((designer) => (
                           <option key={designer.id} value={designer.id}>{designer.full_name}</option>

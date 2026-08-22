@@ -60,7 +60,7 @@ export default async function DashboardPage({
 
   return (
     <>
-      {user.role !== 'ADMIN' ? (
+      {!user.isAdmin ? (
         <PageHeader
           title={`Good ${greeting()}, ${user.profile.full_name.split(' ')[0]}`}
           subtitle={new Date().toLocaleDateString('en-IN', {
@@ -79,11 +79,11 @@ export default async function DashboardPage({
         </div>
       ) : null}
 
-      {user.role === 'ADMIN' ? (
+      {user.isAdmin ? (
         <AdminView dateRange={dateRange} firstName={user.profile.full_name.split(' ')[0] || 'there'} />
       ) : null}
       {user.role === 'BDM' ? <BdmView /> : null}
-      {user.role === 'DESIGNER' ? <DesignerView /> : null}
+      {user.role === 'LANDSCAPER' ? <DesignerView /> : null}
       {user.role === 'EXECUTION' ? <ExecutionView /> : null}
     </>
   );

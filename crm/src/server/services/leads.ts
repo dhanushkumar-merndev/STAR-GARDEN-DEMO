@@ -16,6 +16,7 @@ import type { LeadRow, LeadStatus, UserRole } from '@/types/database';
 import { STATUS_FILTERS, type LeadStatusFilter } from '@/lib/leads/status-filters';
 import { intakeLead, type DuplicateMatch } from './lead-intake';
 import type { CreateLeadInput } from '@/lib/validation/schemas';
+import { listAllFavoritedLeadIds } from './lead-favorites';
 
 /**
  * Lead operations (AGENTS.md §8.1, §8.2).
@@ -362,6 +363,15 @@ export async function listLeads(
         ? '("NOT_REQUIRED","CANCELLED")'
         : '("COMPLETED","CANCELLED")';
     query = query.not(`${deliveryTable}.status`, 'in', excluded);
+  } else if (filters.status === 'STARRED') {
+    // Personal favourites only — the pin (`is_starred`) is not a tab of its
+    // own, it just reorders whatever tab a lead already sits in (below). A
+    // plain id list rather than a join: bounded by how many leads one person
+    // has clicked a star on, never by the size of `leads` itself.
+    const favoriteIds = await listAllFavoritedLeadIds(user);
+    // The all-zero id never matches a real row — the plain way to say "no
+    // favourites yet, show nothing" without a separate empty-list code path.
+    query = query.in('id', favoriteIds.length ? favoriteIds : ['00000000-0000-0000-0000-000000000000']);
   } else if (
     filters.status &&
     filters.status !== 'ALL' &&
@@ -373,6 +383,9 @@ export async function listLeads(
 
   const from = (page - 1) * pageSize;
   const { data, count, error } = await query
+    // Pinned leads float to the top of whatever tab they're already in —
+    // there is no separate "Pinned" tab, this is the whole mechanism.
+    .order('is_starred', { ascending: false })
     .order('created_at', { ascending: false })
     .range(from, from + pageSize - 1);
 
@@ -512,6 +525,13 @@ async function countLeadsByStageFallback(
           user,
           { ...filters, status: 'ALL' },
         );
+      } else if (option.value === 'STARRED') {
+        // Personal favourites only — matches `listLeads`'s STARRED branch.
+        const favoriteIds = await listAllFavoritedLeadIds(user);
+        response = await base().in(
+          'id',
+          favoriteIds.length ? favoriteIds : ['00000000-0000-0000-0000-000000000000'],
+        );
       } else {
         response = await base().eq('status', option.value);
       }
@@ -601,20 +621,83 @@ export async function getLeadDetail(user: SessionUser, leadId: string) {
  * setting on later simply makes those people selectable again, with all their
  * historical leads intact.
  */
-export async function listAssignableBdms() {
+/**
+ * How many people a picker asks for at a time.
+ *
+ * These lists used to come back whole — every active member of the role, on
+ * every page render, so a screen could show three of them in a dropdown. That
+ * is the "cost scales with the size of the table, not with what is on screen"
+ * shape CLAUDE.md warns about, just in a payload rather than a scan: at 500
+ * staff it is 500 `<option>` elements in the HTML of every Leads page load.
+ *
+ * A page now sends one screenful, and the picker asks the server again as the
+ * user types (`searchOwnersAction` and friends).
+ */
+const PEOPLE_PAGE_SIZE = 20;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type PeopleQuery = {
+  /** Substring match on the name, from the picker's search box. */
+  search?: string;
+  limit?: number;
+  /**
+   * Ids to include even when they fall outside the page — in practice the
+   * person already chosen. Without this a capped list would render a picker
+   * whose own selection is missing, and the trigger would fall back to the
+   * placeholder because Radix reads its label off the selected option.
+   */
+  include?: (string | null | undefined)[];
+};
+
+async function listPeopleByRole(roles: UserRole[], query: PeopleQuery = {}) {
   const supabase = await createClient();
-  const { bdmRoleEnabled } = await getBusinessSettings();
+  const search = query.search?.trim().replace(/[%_,]/g, ' ');
 
-  const roles: UserRole[] = bdmRoleEnabled ? ['BDM'] : ['ADMIN'];
-
-  const { data } = await supabase
+  let request = supabase
     .from('profiles')
     .select('id, full_name, role')
     .in('role', roles)
     .eq('is_active', true)
-    .order('full_name');
+    .order('full_name')
+    .limit(query.limit ?? PEOPLE_PAGE_SIZE);
 
-  return data ?? [];
+  if (search) request = request.ilike('full_name', `%${search}%`);
+
+  const { data } = await request;
+  const rows = data ?? [];
+
+  // One extra query, and only for ids the page above did not already return.
+  // Callers pass whatever their picker currently holds, which on a filter bar
+  // can be a sentinel like `ALL` rather than an id — hence the shape check.
+  const missing = [
+    ...new Set((query.include ?? []).filter((id): id is string => Boolean(id) && UUID.test(id!))),
+  ].filter((id) => !rows.some((row) => row.id === id));
+
+  if (missing.length === 0) return rows;
+
+  const { data: pinned } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .in('id', missing);
+
+  return [...rows, ...(pinned ?? [])].sort((a, b) =>
+    (a.full_name ?? '').localeCompare(b.full_name ?? ''),
+  );
+}
+
+export async function listAssignableBdms(query: PeopleQuery = {}) {
+  const { bdmRoleEnabled } = await getBusinessSettings();
+
+  // Admin and Super Admin can always own a lead, the same way they are
+  // always eligible in the designer/execution pickers. BDM joins the list
+  // only once the role is actually switched on — offering it earlier would
+  // let a lead be handed to a role nobody is filling yet.
+  const roles: UserRole[] = bdmRoleEnabled
+    ? ['BDM', 'ADMIN', 'SUPER_ADMIN']
+    : ['ADMIN', 'SUPER_ADMIN'];
+
+  return listPeopleByRole(roles, query);
 }
 
 async function assertBdmAssignmentAvailable(
@@ -628,35 +711,20 @@ async function assertBdmAssignmentAvailable(
     .eq('id', userId)
     .maybeSingle();
 
-  const expectedRole: UserRole = bdmRoleEnabled ? 'BDM' : 'ADMIN';
-  if (!assignee || !assignee.is_active || assignee.role !== expectedRole) {
-    throw new AppError(
-      'VALIDATION',
-      `Choose an active ${bdmRoleEnabled ? 'BDM' : 'Admin'} to own this lead.`,
-    );
+  const expectedRoles: UserRole[] = bdmRoleEnabled
+    ? ['BDM', 'ADMIN', 'SUPER_ADMIN']
+    : ['ADMIN', 'SUPER_ADMIN'];
+  if (!assignee || !assignee.is_active || !expectedRoles.includes(assignee.role)) {
+    throw new AppError('VALIDATION', 'Choose an active BDM or Admin to own this lead.');
   }
 }
 
-export async function listActiveDesigners() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .eq('role', 'DESIGNER')
-    .eq('is_active', true)
-    .order('full_name');
-  return data ?? [];
+export async function listActiveDesigners(query: PeopleQuery = {}) {
+  return listPeopleByRole(['LANDSCAPER', 'ADMIN', 'SUPER_ADMIN'], query);
 }
 
-export async function listActiveExecutionStaff() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .eq('role', 'EXECUTION')
-    .eq('is_active', true)
-    .order('full_name');
-  return data ?? [];
+export async function listActiveExecutionStaff(query: PeopleQuery = {}) {
+  return listPeopleByRole(['EXECUTION', 'ADMIN', 'SUPER_ADMIN'], query);
 }
 
 /**

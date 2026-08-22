@@ -59,7 +59,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const params = await searchParams;
 
   const page = Number(typeof params.page === 'string' ? params.page : 1);

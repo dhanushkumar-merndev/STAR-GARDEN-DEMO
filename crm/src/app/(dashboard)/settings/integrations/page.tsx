@@ -13,7 +13,7 @@ import { VirtualizedTable } from '@/components/ui/virtualized-table';
 export const metadata: Metadata = { title: 'Integrations' };
 
 export default async function IntegrationsPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const supabase = await createClient();
   const [meta, emailLogs] = await Promise.all([
     getMetaHealth(user),

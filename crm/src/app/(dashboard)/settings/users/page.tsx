@@ -9,14 +9,14 @@ import {
   listStaffWithActiveWork,
 } from '@/server/services/users';
 import { Badge, Card, CardBody, CardHeader, EmptyState, PageHeader } from '@/components/ui';
-import { InviteStaffForm, StaffDirectory } from '@/components/settings/user-admin';
+import { InviteHistoryList, InviteStaffForm, StaffDirectory } from '@/components/settings/user-admin';
 import { ArchivedStaffSetting } from '@/components/settings/archived-staff';
 import { getBusinessSettings } from '@/lib/settings';
 
 export const metadata: Metadata = { title: 'Users and roles' };
 
 export default async function UsersPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const [staff, invites, requests, archived, business] = await Promise.all([
     listStaffWithActiveWork(user),
     listInvites(user),
@@ -41,7 +41,7 @@ export default async function UsersPage() {
             go?" is the next thing on screen. */}
         <Card><ArchivedStaffSetting staff={archived} /></Card>
 
-        <Card><CardHeader title="Invite history" />{invites.length === 0 ? <EmptyState title="No invites" /> : <ul className="divide-y divide-line">{invites.map((invite) => <li key={invite.id} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm"><span className="font-medium text-ink">{invite.full_name}</span><span className="text-ink-muted">{invite.email}</span><Badge tone={invite.accepted_at ? 'ok' : 'info'}>{invite.accepted_at ? 'Accepted' : 'Pending'}</Badge></li>)}</ul>}</Card>
+        <Card><CardHeader title="Invite history" />{invites.length === 0 ? <EmptyState title="No invites" /> : <InviteHistoryList invites={invites} />}</Card>
       </div>
     </>
   );

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { requireAdmin, requireUser } from '@/lib/auth/session';
+import { requireAdmin, requireSuperAdmin, requireUser } from '@/lib/auth/session';
 import { actionResult, AppError, type ActionResult } from '@/lib/errors';
 import { createClient } from '@/lib/supabase/server';
 import { AuditAction, recordAudit } from '@/lib/audit';
@@ -49,7 +49,7 @@ export async function inviteStaffAction(
   formData: FormData,
 ): Promise<ActionResult<{ inviteId: string }>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(inviteStaffSchema, formDataToObject(formData));
 
     const invite = await inviteStaffService(user, input);
@@ -64,7 +64,7 @@ export async function revokeInviteAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const inviteId = String(formData.get('invite_id') ?? '');
 
     if (!inviteId) throw new AppError('VALIDATION', 'Missing invite.');
@@ -80,7 +80,7 @@ export async function updateStaffAction(
   formData: FormData,
 ): Promise<ActionResult<{ userId: string }>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(updateUserSchema, formDataToObject(formData));
 
     const profile = await updateStaffService(user, input);
@@ -99,7 +99,7 @@ export async function updateStaffAction(
  */
 export async function archiveStaffAction(userId: string): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     await archiveStaffService(user, parseUserId(userId));
 
     revalidatePath('/settings/users');
@@ -110,7 +110,7 @@ export async function archiveStaffAction(userId: string): Promise<ActionResult<u
 
 export async function unarchiveStaffAction(userId: string): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     await unarchiveStaffService(user, parseUserId(userId));
 
     revalidatePath('/settings/users');
@@ -136,7 +136,7 @@ export async function applyJourneySettingToOpenVisitsAction(): Promise<
   ActionResult<{ updated: number; skipped: number }>
 > {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const result = await applyJourneySettingToOpenVisits(user);
 
     revalidatePath('/settings');
@@ -246,7 +246,7 @@ export async function updateBusinessSettingsAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(businessSettingsSchema, formDataToObject(formData));
     const supabase = await createClient();
 
@@ -315,7 +315,7 @@ export async function updateNormalizationSettingsAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(normalizationSettingsSchema, formDataToObject(formData));
     const supabase = await createClient();
 
@@ -372,7 +372,7 @@ export async function selectAdAccountAction(
   formData: FormData,
 ): Promise<ActionResult<{ adAccountId: string }>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(selectAdAccountSchema, formDataToObject(formData));
 
     await selectAdAccount(user, input.meta_ad_account_id);
@@ -391,7 +391,7 @@ export async function saveCampaignSelectionAction(
   formData: FormData,
 ): Promise<ActionResult<{ mode: 'ALL' | 'SELECTED'; count: number }>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
 
     // `getAll` rather than `formDataToObject`: a checkbox group sends the same
     // key many times, and collapsing it to one value would silently drop every
@@ -425,7 +425,7 @@ export async function updateSettingAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(updateSettingSchema, formDataToObject(formData));
     const supabase = await createClient();
 
@@ -480,7 +480,7 @@ export async function upsertConfigOptionAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const input = parseOrThrow(upsertConfigOptionSchema, formDataToObject(formData));
     const supabase = await createClient();
 
@@ -525,7 +525,7 @@ export async function retryMetaEventAction(
   formData: FormData,
 ): Promise<ActionResult<{ outcome: string }>> {
   return actionResult(async () => {
-    await requireAdmin();
+    await requireSuperAdmin();
     const eventId = String(formData.get('event_id') ?? '');
 
     if (!eventId) throw new AppError('VALIDATION', 'Missing event.');
@@ -567,7 +567,7 @@ export async function retryMetaEventAction(
 
 export async function sendTestEmailAction(): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const rate = await checkRateLimit({
       bucket: 'admin_test_email',
       identifier: user.id,
@@ -608,7 +608,7 @@ export async function syncMetaAction(
   formData: FormData,
 ): Promise<ActionResult<{ syncType: MetaSyncType }>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const syncType = String(formData.get('sync_type') ?? '') as MetaSyncType;
     if (syncType !== 'CAMPAIGNS' && syncType !== 'INSIGHTS') {
       throw new AppError('VALIDATION', 'Unknown Meta sync type.');
@@ -638,7 +638,7 @@ export async function saveMetaMappingAction(
   formData: FormData,
 ): Promise<ActionResult<undefined>> {
   return actionResult(async () => {
-    const user = await requireAdmin();
+    const user = await requireSuperAdmin();
     const metaFormId = String(formData.get('meta_form_id') ?? '');
     const raw = String(formData.get('entries') ?? '[]');
 

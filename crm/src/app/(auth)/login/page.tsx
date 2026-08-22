@@ -201,6 +201,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             height={48}
             priority
             className="h-12 w-auto object-contain"
+            style={{ width: 'auto' }}
           />
         </div>
         {children}

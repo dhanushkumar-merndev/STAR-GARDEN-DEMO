@@ -3,17 +3,23 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { LuArchive } from 'react-icons/lu';
-import { Button, Checkbox, Input, Select } from '@/components/ui';
+import { LuArchive, LuX } from 'react-icons/lu';
+import { Badge, Button, Checkbox, Input, Select } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui/dialog';
-import { archiveStaffAction, inviteStaffAction, updateStaffAction } from '@/server/actions/admin';
+import {
+  archiveStaffAction,
+  inviteStaffAction,
+  revokeInviteAction,
+  updateStaffAction,
+} from '@/server/actions/admin';
 import type { ActiveWorkCounts } from '@/server/services/users';
-import type { ProfileRow, UserRole } from '@/types/database';
+import type { ProfileRow, StaffInviteRow, UserRole } from '@/types/database';
 
 const ALL_ROLES: { value: UserRole; label: string; requiresBdm?: boolean }[] = [
+  { value: 'SUPER_ADMIN', label: 'Super Admin' },
   { value: 'ADMIN', label: 'Admin' },
   { value: 'BDM', label: 'BDM', requiresBdm: true },
-  { value: 'DESIGNER', label: 'Landscape Designer' },
+  { value: 'LANDSCAPER', label: 'Landscaper' },
   { value: 'EXECUTION', label: 'Execution Team' },
 ];
 
@@ -61,7 +67,7 @@ export function InviteStaffForm({ bdmEnabled = false }: { bdmEnabled?: boolean }
       {/* Defaults to Designer, not BDM: with the BDM role switched off that
           option is not even in the list, and a default that is absent would
           silently select whatever happens to be first. */}
-      <Select name="role" defaultValue={bdmEnabled ? 'BDM' : 'DESIGNER'}>
+      <Select name="role" defaultValue={bdmEnabled ? 'BDM' : 'LANDSCAPER'}>
         {roles.map((role) => (
           <option key={role.value} value={role.value}>
             {role.label}
@@ -337,5 +343,86 @@ export function StaffDirectory({
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Invite history, with a way to remove a row.
+ *
+ * Revoking a still-pending invite takes that email off the allowlist — the
+ * usual reason to do this, e.g. a typo'd address or someone who no longer
+ * needs access. Revoking an already-accepted row only tidies the history
+ * list; the account it produced keeps working and has to be deactivated
+ * separately from the Staff list above (the server action already refuses
+ * to touch it — see `revokeInvite` in `server/services/users.ts`).
+ */
+export function InviteHistoryList({ invites }: { invites: StaffInviteRow[] }) {
+  const router = useRouter();
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+
+  return (
+    <ul className="divide-y divide-line">
+      {invites.map((invite) => {
+        const accepted = Boolean(invite.accepted_at);
+        const revoking = pendingId === invite.id;
+        return (
+          <li key={invite.id} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
+            <span className="font-medium text-ink">{invite.full_name}</span>
+            <span className="text-ink-muted">{invite.email}</span>
+            <Badge tone={accepted ? 'ok' : 'info'}>{accepted ? 'Accepted' : 'Pending'}</Badge>
+
+            <ConfirmDialog
+              trigger={
+                <button
+                  type="button"
+                  disabled={revoking}
+                  aria-label={`Revoke invite for ${invite.email}`}
+                  className="tap ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-ink-subtle transition hover:bg-[--color-danger-bg] hover:text-danger disabled:cursor-wait disabled:opacity-60"
+                >
+                  <LuX className="size-4" />
+                </button>
+              }
+              title={`Revoke this invite?`}
+              description={
+                accepted
+                  ? `${invite.full_name} already signed in with this invite. Removing it only clears this history row — their account keeps working.`
+                  : `${invite.email} will no longer be able to sign in. This can be undone by inviting them again.`
+              }
+            >
+              {(close) => (
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button variant="outline" onClick={close} disabled={revoking}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={revoking}
+                    onClick={async () => {
+                      setPendingId(invite.id);
+                      try {
+                        const formData = new FormData();
+                        formData.set('invite_id', invite.id);
+                        const result = await revokeInviteAction(null, formData);
+                        if (result.ok) {
+                          toast.success('Invite revoked.');
+                          close();
+                          router.refresh();
+                        } else {
+                          toast.error(result.message);
+                        }
+                      } finally {
+                        setPendingId(null);
+                      }
+                    }}
+                  >
+                    {revoking ? 'Revoking…' : 'Revoke'}
+                  </Button>
+                </div>
+              )}
+            </ConfirmDialog>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

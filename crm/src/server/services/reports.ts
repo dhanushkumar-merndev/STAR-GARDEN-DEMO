@@ -234,7 +234,9 @@ export async function listAuditLog(
   user: SessionUser,
   options: { entityType?: string; entityId?: string; action?: string; page?: number } = {},
 ) {
-  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Audit history is Admin-only.');
+  if (!user.isSuperAdmin) {
+    throw new AppError('FORBIDDEN', 'Audit history is Super-Admin-only.');
+  }
 
   const supabase = await createClient();
   const page = Math.max(1, options.page ?? 1);
@@ -319,7 +321,9 @@ async function resolveAuditNames(
 
 /** File access history for the Admin integration/security screen (§7.1). */
 export async function listFileAccessLog(user: SessionUser, limit = 100) {
-  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'File access history is Admin-only.');
+  if (!user.isSuperAdmin) {
+    throw new AppError('FORBIDDEN', 'File access history is Super-Admin-only.');
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase

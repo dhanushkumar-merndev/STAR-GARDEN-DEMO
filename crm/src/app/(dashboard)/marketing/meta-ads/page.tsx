@@ -8,7 +8,7 @@ import { formatDateTime } from '@/lib/utils/format';
 export const metadata: Metadata = { title: 'Meta Ads' };
 
 export default async function MetaAdsPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const rows = await getCampaignPerformance(user);
 
   return (

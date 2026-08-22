@@ -167,6 +167,26 @@
     }
   }
 
+  /* At `lg` and up, `body` *is* the scroller — `.crm-shell`, `.crm-workspace`
+     and `main` all go `overflow-visible` there — and the desktop sidebar
+     (`.crm-desktop-nav`) is `position: sticky` inside that flow, so its
+     containing block depends on `body` staying in normal document flow.
+     Radix menus (`UserMenu`, `NotificationMenu`) default to a modal lock that
+     sets `overflow: hidden` on `body` the instant they open, which yanks the
+     sidebar out of that containing block for as long as the menu is open —
+     it collapses to a sliver and the workspace it was sharing a flex row with
+     balloons into a blank gap. Unlike the mobile case above, there is no
+     in-shell scroller to hand off to here, so the fix is simply to refuse the
+     lock outright. */
+  @media (min-width: 64rem) {
+    body[data-scroll-locked]:has(.crm-shell) {
+      overflow: visible !important;
+      margin-right: 0 !important;
+      padding-right: 0 !important;
+      --removed-body-scroll-bar-size: 0px;
+    }
+  }
+
   /* 16px minimum on form controls stops iOS Safari zooming on focus — a
      constant irritation for staff filling forms on site (§16). */
   input,

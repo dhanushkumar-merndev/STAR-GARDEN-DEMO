@@ -16,7 +16,7 @@ export default async function EditLeadPage({
   params: Promise<{ leadId: string }>;
 }) {
   const { leadId } = await params;
-  const user = await requirePageRole('ADMIN', 'BDM');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM');
 
   let lead;
   try {

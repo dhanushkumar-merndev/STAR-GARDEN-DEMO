@@ -292,6 +292,12 @@ async function countFollowUpsByScopeFallback(
   return Object.fromEntries(entries);
 }
 
+/**
+ * India has one zone and no daylight saving, so a fixed offset is exact — and
+ * it has to match the zone `follow_up_calendar` buckets days in.
+ */
+const IST_UTC_OFFSET = '+05:30';
+
 /** One cell of the calendar grid: the day's total, and the few entries it shows. */
 export interface FollowUpCalendarDay {
   /** `yyyy-mm-dd`, bucketed in Asia/Kolkata by the RPC. */
@@ -393,22 +399,42 @@ export async function listFollowUps(
 
   if (options.leadId) query = query.eq('lead_id', options.leadId);
 
-  query = applyFollowUpScope(query, options.scope ?? 'ALL');
+  const dayParts = options.day?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
-  // Applied after the scope, not instead of it: clicking 17 Aug while looking
-  // at Overdue should show that day's overdue work, not everything on the day.
+  if (dayParts) {
+    /**
+     * A day picked on the calendar replaces the scope rather than narrowing it.
+     *
+     * It used to narrow it, which read well in a comment ("clicking 17 Aug
+     * while on Overdue shows that day's overdue work") and was wrong on the
+     * screen: the calendar grid is not scoped — `follow_up_calendar` returns
+     * every open follow-up in the range — so a cell would say 82 and the list
+     * under it would say "Nothing on this day". Overdue means `due_at < now()`,
+     * so *every* future cell in the month emptied itself on click, and Today
+     * and Upcoming did the same to the days on their far side.
+     *
+     * The cell and the drill-down now ask the same question — the open work
+     * due that day — so the number you click is the number you get.
+     */
+    query = query.in('status', ['OPEN', 'OVERDUE']);
+
+    /**
+     * Bounded in IST, because that is the zone the RPC buckets its days in
+     * (`(due_at at time zone 'Asia/Kolkata')::date`). Building the bounds from
+     * `new Date(year, month, date)` used the *server's* zone instead, so on a
+     * UTC host every follow-up due between midnight and 5:30am IST fell into
+     * the previous day's list while the calendar drew it on the right one.
+     */
+    const day = `${dayParts[1]}-${dayParts[2]}-${dayParts[3]}`;
+    query = query
+      .gte('due_at', `${day}T00:00:00.000${IST_UTC_OFFSET}`)
+      .lte('due_at', `${day}T23:59:59.999${IST_UTC_OFFSET}`);
+  } else {
+    query = applyFollowUpScope(query, options.scope ?? 'ALL');
+  }
+
   if (options.from) query = query.gte('due_at', options.from);
   if (options.to) query = query.lte('due_at', options.to);
-
-  const dayParts = options.day?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dayParts) {
-    const year = Number(dayParts[1]);
-    const month = Number(dayParts[2]) - 1;
-    const date = Number(dayParts[3]);
-    query = query
-      .gte('due_at', new Date(year, month, date).toISOString())
-      .lte('due_at', new Date(year, month, date, 23, 59, 59, 999).toISOString());
-  }
 
   const { data, count, error } = await query
     .order('due_at', { ascending: (options.scope ?? 'ALL') !== 'COMPLETED' })

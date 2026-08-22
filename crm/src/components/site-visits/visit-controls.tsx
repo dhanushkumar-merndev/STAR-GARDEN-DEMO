@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { LuExternalLink, LuLogIn, LuLogOut, LuMapPin, LuNavigation } from 'react-icons/lu';
 import { toast } from 'sonner';
-import { Alert, Button, Checkbox, Field, Input, Textarea } from '@/components/ui';
+import { Alert, Button, Checkbox, Field, Input, Select, Textarea } from '@/components/ui';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { FormError, PendingFieldset, SubmitButton, fieldError } from '@/components/forms/form-parts';
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/server/actions/workflow';
 import type { ActionResult } from '@/lib/errors';
 import { googleMapsViewUrl } from '@/lib/utils/maps';
+import { searchDesignersAction } from '@/server/actions/people';
 import { FileUploader, type FileUploaderHandle } from '@/components/files/uploader';
 
 /**
@@ -350,6 +351,8 @@ export function CompleteVisitDialog({
   siteVisitId,
   triggerLabel = 'Complete visit',
   photoUploadMaxSizeMb,
+  designers = [],
+  defaultDesignerId,
 }: {
   siteVisitId: string;
   triggerLabel?: string;
@@ -361,11 +364,23 @@ export function CompleteVisitDialog({
    * moves here rather than the evidence being quietly lost.
    */
   photoUploadMaxSizeMb?: number;
+  /**
+   * Who the design can be handed to — Landscape Designers, Admins and Super
+   * Admins, the same roles every other designer picker offers.
+   *
+   * One page of them; the picker asks the server for the rest as you type.
+   */
+  designers?: { id: string; full_name: string }[];
+  /** The designer who attended, pre-selected. */
+  defaultDesignerId?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [result, setResult] = React.useState<ActionResult<unknown> | null>(null);
   const uploader = React.useRef<FileUploaderHandle>(null);
+  // Controlled so the designer field can follow it: naming someone to draw a
+  // design nobody asked for is a question with no answer.
+  const [designRequired, setDesignRequired] = React.useState(true);
 
   async function handleSubmit(formData: FormData) {
     // Same order as check-out, for the same reason: a failed upload must not
@@ -410,10 +425,38 @@ export function CompleteVisitDialog({
 
             <Checkbox
               name="design_required"
-              defaultChecked
+              checked={designRequired}
+              onChange={(event) => setDesignRequired(event.target.checked)}
               label="Start landscape design after approval"
-              hint="The Landscape Designer who attended this visit will receive the requirement automatically."
+              hint="The requirement goes to the designer chosen below once an Admin approves this visit."
             />
+
+            {designRequired ? (
+              <Field
+                label="Landscape designer"
+                htmlFor="designer_id"
+                hint="Defaults to whoever attended this visit. Change it to hand the drawing to someone else."
+                error={fieldError(result, 'designer_id')}
+              >
+                <Select
+                  id="designer_id"
+                  name="designer_id"
+                  searchable
+                  onSearch={searchDesignersAction}
+                  defaultValue={defaultDesignerId ?? ''}
+                >
+                  {/* Sending nothing keeps the server's own default — the
+                      designer on the visit — so this stays valid even on a
+                      visit booked without one. */}
+                  <option value="">Whoever attended this visit</option>
+                  {designers.map((designer) => (
+                    <option key={designer.id} value={designer.id}>
+                      {designer.full_name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
           </PendingFieldset>
 
           {photoUploadMaxSizeMb ? (

@@ -239,6 +239,7 @@ export function PortalAccessPanel({
               <Select
                 id="recipient_email"
                 name="recipient_email"
+                searchable
                 defaultValue={live.find((g) => g.is_primary)?.email ?? live[0]?.email ?? ''}
                 className="h-11 w-full rounded-lg border border-line bg-surface px-3 pr-8 text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
               >

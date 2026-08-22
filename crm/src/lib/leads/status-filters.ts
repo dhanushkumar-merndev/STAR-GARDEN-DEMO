@@ -11,13 +11,18 @@ import type { LeadStatus } from '@/types/database';
 /**
  * What the stage tabs can be set to.
  *
- * Mostly `LeadStatus`, plus two stages that are not lead statuses at all:
+ * Mostly `LeadStatus`, plus stages that are not lead statuses at all:
  * design and execution live in their own tables, because a lead can be
  * QUALIFIED while a drawing is in progress and the two facts are independent.
- * They are exposed here anyway — "show me everything in design" is a question
- * about leads, and answering it should not mean visiting another screen.
+ * `STARRED` is the same shape of exception — whether whoever is looking has
+ * personally favourited a lead lives in `lead_favorites`, not in `status`.
+ * (The separate Admin *pin*, `leads.is_starred`, is not a tab at all — a
+ * pinned lead just sorts to the top of whichever tab it already belongs to;
+ * see `listLeads`.) All three are exposed here anyway — "show me everything
+ * in design" (or starred) is a question about leads, and answering it should
+ * not mean visiting another screen.
  */
-export type LeadStatusFilter = LeadStatus | 'ALL' | 'IN_DESIGN' | 'IN_EXECUTION';
+export type LeadStatusFilter = LeadStatus | 'ALL' | 'IN_DESIGN' | 'IN_EXECUTION' | 'STARRED';
 
 /** The stage strip, in the order work actually moves through it. */
 export const STATUS_FILTERS: { value: LeadStatusFilter; label: string }[] = [
@@ -36,6 +41,7 @@ export const STATUS_FILTERS: { value: LeadStatusFilter; label: string }[] = [
   { value: 'IN_EXECUTION', label: 'Execution' },
   { value: 'LOST', label: 'Lost' },
   { value: 'CLOSED', label: 'Closed' },
+  { value: 'STARRED', label: 'Starred' },
 ];
 
 const STATUS_FILTER_VALUES = new Set(STATUS_FILTERS.map((option) => option.value));

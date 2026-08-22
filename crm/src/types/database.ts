@@ -24,10 +24,18 @@ export type Json = string | number | boolean | null | { [k: string]: Json | unde
  * CLIENT is the customer's own read-only login and is deliberately NOT a staff
  * role: `app.is_active_user()` excludes it, so it inherits no staff policy.
  */
-export type UserRole = 'ADMIN' | 'BDM' | 'DESIGNER' | 'EXECUTION' | 'CLIENT';
+/**
+ * `DESIGNER` stays out of this union deliberately: every profile that held it
+ * was migrated to `LANDSCAPER` by `20260822100100_super_admin_landscaper_roles`,
+ * and nothing has created that value since. The database enum itself still
+ * carries the dead `DESIGNER` label — Postgres cannot drop an enum value
+ * without recreating the type — but the application never selects, inserts,
+ * or displays it again.
+ */
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'BDM' | 'LANDSCAPER' | 'EXECUTION' | 'CLIENT';
 
 /** Staff roles only — the set that may reach any part of the CRM proper. */
-export const STAFF_ROLES = ['ADMIN', 'BDM', 'DESIGNER', 'EXECUTION'] as const;
+export const STAFF_ROLES = ['SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER', 'EXECUTION'] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
 export const isStaffRole = (role: UserRole): role is StaffRole => role !== 'CLIENT';
@@ -220,6 +228,8 @@ export type LeadRow = {
   status: LeadStatus;
   assigned_bdm_id: string | null;
   design_required: boolean;
+  /** Admin/Super-Admin-only, visible to everyone. See `lead_favorites` for the personal, per-user equivalent. */
+  is_starred: boolean;
   next_action_at: string | null;
   last_activity_at: string;
   first_call_attempt_at: string | null;
@@ -227,6 +237,13 @@ export type LeadRow = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** One row per (user, lead): a personal, private favourite (§ `20260822120000_lead_favorites`). */
+export type LeadFavoriteRow = {
+  user_id: string;
+  lead_id: string;
+  created_at: string;
 }
 
 export type LeadAssignmentHistoryRow = {
@@ -764,6 +781,15 @@ export type Database = {
           ProfileRel<'lead_assignment_history_from_user_id_fkey', 'from_user_id'>,
           ProfileRel<'lead_assignment_history_to_user_id_fkey', 'to_user_id'>,
           ProfileRel<'lead_assignment_history_changed_by_fkey', 'changed_by'>,
+        ]
+      >;
+
+      lead_favorites: Table<
+        LeadFavoriteRow,
+        'user_id' | 'lead_id',
+        [
+          LeadRel<'lead_favorites_lead_id_fkey', 'lead_id'>,
+          ProfileRel<'lead_favorites_user_id_fkey', 'user_id'>,
         ]
       >;
 

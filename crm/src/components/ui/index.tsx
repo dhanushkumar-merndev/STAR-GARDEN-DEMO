@@ -252,10 +252,21 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  fullWidthActionOnMobile,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
+  /**
+   * The action wrapper normally sizes to its own content (`shrink-0`) and
+   * sits right-aligned beside the subtitle — correct for a single button.
+   * Content that is itself meant to fill the row on a phone (e.g. two
+   * buttons split into equal or proportional widths) needs the wrapper to
+   * actually span the row instead, which `shrink-0` alone never does — it
+   * only stops the box shrinking, it does not make it grow. Opt-in, so the
+   * other pages passing one right-aligned button keep their exact layout.
+   */
+  fullWidthActionOnMobile?: boolean;
 }) {
   if (!subtitle && !action) return null;
 
@@ -269,7 +280,16 @@ export function PageHeader({
       ) : (
         <span className="min-w-0" />
       )}
-      {action ? <div className="max-w-full min-w-0 shrink-0">{action}</div> : null}
+      {action ? (
+        <div
+          className={cn(
+            'max-w-full min-w-0',
+            fullWidthActionOnMobile ? 'w-full lg:w-auto lg:shrink-0' : 'shrink-0',
+          )}
+        >
+          {action}
+        </div>
+      ) : null}
     </header>
   );
 }

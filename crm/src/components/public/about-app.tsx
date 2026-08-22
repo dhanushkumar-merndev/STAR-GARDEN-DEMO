@@ -81,6 +81,7 @@ export function AboutApp() {
           width={400}
           height={72}
           className="h-10 w-auto sm:h-12"
+          style={{ width: 'auto' }}
           priority
         />
         <div>

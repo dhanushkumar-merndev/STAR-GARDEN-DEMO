@@ -15,8 +15,8 @@ export const metadata: Metadata = { title: 'New lead' };
  * makes once with the full picture, not a nag on every keystroke.
  */
 export default async function NewLeadPage() {
-  const user = await requirePageRole('ADMIN', 'BDM');
-  const bdms = user.isAdmin ? await listAssignableBdms() : [];
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM');
+  const bdms = user.isAdmin ? await listAssignableBdms({ include: [user.id] }) : [];
   const adminOwnsLeads = user.isAdmin && bdms.some((person) => person.id === user.id);
 
   return (

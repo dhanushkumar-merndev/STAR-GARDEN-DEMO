@@ -357,14 +357,14 @@ export async function updateStaff(
     if (!input.is_active) {
       throw new AppError('VALIDATION', 'You cannot deactivate your own account.');
     }
-    if (input.role !== 'ADMIN') {
-      throw new AppError('VALIDATION', 'You cannot remove your own Admin role.');
+    if (input.role !== 'SUPER_ADMIN') {
+      throw new AppError('VALIDATION', 'You cannot remove your own Super Admin role.');
     }
   }
 
-  // Never leave the system with no way back in.
-  if (before.role === 'ADMIN' && (input.role !== 'ADMIN' || !input.is_active)) {
-    await assertNotLastActiveAdmin();
+  // Never leave the system with no way back into Settings.
+  if (before.role === 'SUPER_ADMIN' && (input.role !== 'SUPER_ADMIN' || !input.is_active)) {
+    await assertNotLastActiveSuperAdmin();
   }
 
   if (before.role !== input.role || (before.is_active && !input.is_active)) {
@@ -441,8 +441,8 @@ export async function archiveStaff(user: SessionUser, staffUserId: string): Prom
     throw new AppError('VALIDATION', 'You cannot archive your own account.');
   }
 
-  if (before.role === 'ADMIN' && before.is_active) {
-    await assertNotLastActiveAdmin();
+  if (before.role === 'SUPER_ADMIN' && before.is_active) {
+    await assertNotLastActiveSuperAdmin();
   }
 
   const activeWork = await getActiveWorkCounts(user, staffUserId);
@@ -545,8 +545,10 @@ export async function updateOwnProfile(
   return data;
 }
 
+// Settings > Users is Super-Admin-only (an Admin has full operational reach
+// but not the "manage who else can do what" surface).
 function requireAdminRole(user: SessionUser): void {
-  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Admin access is required.');
+  if (!user.isSuperAdmin) throw new AppError('FORBIDDEN', 'Super Admin access is required.');
 }
 
 /**
@@ -555,15 +557,18 @@ function requireAdminRole(user: SessionUser): void {
  * Shared by demotion, deactivation and archiving — three different-looking
  * actions with the same failure mode at the end of them.
  */
-async function assertNotLastActiveAdmin(): Promise<void> {
+async function assertNotLastActiveSuperAdmin(): Promise<void> {
   const supabase = await createClient();
   const { count } = await supabase
     .from('profiles')
     .select('id', { count: 'exact', head: true })
-    .eq('role', 'ADMIN')
+    .eq('role', 'SUPER_ADMIN')
     .eq('is_active', true);
 
   if ((count ?? 0) <= 1) {
-    throw new AppError('VALIDATION', 'This is the last active Admin. Promote someone else first.');
+    throw new AppError(
+      'VALIDATION',
+      'This is the last active Super Admin. Promote someone else first.',
+    );
   }
 }

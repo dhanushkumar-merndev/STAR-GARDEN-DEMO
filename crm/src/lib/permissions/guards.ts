@@ -47,7 +47,7 @@ export async function assertCanReadLead(user: SessionUser, leadId: string): Prom
 
   // Designer / Execution reach a lead only through a project they are on.
   const [{ data: designLink }, { data: executionLink }] = await Promise.all([
-    user.role === 'DESIGNER'
+    user.role === 'LANDSCAPER'
       ? supabase
           .from('design_projects')
           .select('id')

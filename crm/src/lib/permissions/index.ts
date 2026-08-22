@@ -26,7 +26,19 @@ export interface Actor {
   role: UserRole;
 }
 
-export const isAdmin = (actor: Actor): boolean => actor.role === 'ADMIN';
+/**
+ * The operational bypass: ADMIN or SUPER_ADMIN. Every predicate below that
+ * used to mean "Admin sees/does everything" keeps that exact meaning — a
+ * Super Admin now qualifies too, as a strict superset, never a narrowing.
+ *
+ * This is NOT the gate for Accounts, Reports, Marketing or Settings — those
+ * are Super-Admin-only. See `isSuperAdmin` and the "Admin surfaces" section
+ * below.
+ */
+export const isAdmin = (actor: Actor): boolean =>
+  actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+
+export const isSuperAdmin = (actor: Actor): boolean => actor.role === 'SUPER_ADMIN';
 
 /* -------------------------------------------------------------------------- */
 /* Leads (§7.1, §7.2)                                                          */
@@ -62,7 +74,7 @@ export function canReadLead(
 ): boolean {
   if (isAdmin(actor)) return true;
   if (ownsLead(actor, lead)) return true;
-  if (actor.role === 'DESIGNER') return relations.isAssignedDesigner === true;
+  if (actor.role === 'LANDSCAPER') return relations.isAssignedDesigner === true;
   if (actor.role === 'EXECUTION') return relations.isExecutionAssignee === true;
   return false;
 }
@@ -74,7 +86,7 @@ export function canAssignLeadToOthers(actor: Actor): boolean {
 
 /** A BDM may create a lead, but only unassigned or owned by themselves (§7.2). */
 export function canCreateLead(actor: Actor): boolean {
-  return actor.role === 'ADMIN' || actor.role === 'BDM';
+  return isAdmin(actor) || actor.role === 'BDM';
 }
 
 export function canViewAllLeads(actor: Actor): boolean {
@@ -119,7 +131,7 @@ export function canUploadDesignVersion(
   project: Pick<DesignProjectRow, 'assigned_designer_id' | 'status'>,
 ): boolean {
   if (project.status === 'APPROVED' || project.status === 'CANCELLED') return false;
-  return actor.role === 'DESIGNER' && project.assigned_designer_id === actor.id;
+  return actor.role === 'LANDSCAPER' && project.assigned_designer_id === actor.id;
 }
 
 /** Review, revision and approval are the reviewer's side of the workflow (§7.2). */
@@ -179,16 +191,19 @@ export function canOverrideCompletion(actor: Actor): boolean {
 /* Files (§5.5)                                                                */
 /* -------------------------------------------------------------------------- */
 
+const ADMIN_CATEGORIES: readonly FileCategory[] = [
+  'DESIGN_SOURCE',
+  'SITE_VISIT_ATTACHMENT',
+  'EXECUTION_EVIDENCE',
+  'COMPLETION_EVIDENCE',
+  'LEAD_ATTACHMENT',
+];
+
 const CATEGORIES_BY_ROLE: Record<UserRole, readonly FileCategory[]> = {
-  ADMIN: [
-    'DESIGN_SOURCE',
-    'SITE_VISIT_ATTACHMENT',
-    'EXECUTION_EVIDENCE',
-    'COMPLETION_EVIDENCE',
-    'LEAD_ATTACHMENT',
-  ],
+  SUPER_ADMIN: ADMIN_CATEGORIES,
+  ADMIN: ADMIN_CATEGORIES,
   BDM: ['SITE_VISIT_ATTACHMENT', 'LEAD_ATTACHMENT'],
-  DESIGNER: ['DESIGN_VERSION', 'DESIGN_SOURCE', 'SITE_VISIT_ATTACHMENT'],
+  LANDSCAPER: ['DESIGN_VERSION', 'DESIGN_SOURCE', 'SITE_VISIT_ATTACHMENT'],
   EXECUTION: ['EXECUTION_EVIDENCE', 'COMPLETION_EVIDENCE'],
   // A customer uploads nothing. The portal is read-only by construction.
   CLIENT: [],
@@ -215,13 +230,13 @@ export function canArchiveFile(
 /* Admin surfaces (§7.1, §11.7, §12)                                           */
 /* -------------------------------------------------------------------------- */
 
-export const canManageUsers = isAdmin;
-export const canManageSettings = isAdmin;
-export const canViewAuditLog = isAdmin;
-export const canViewIntegrationStatus = isAdmin;
+export const canManageUsers = isSuperAdmin;
+export const canManageSettings = isSuperAdmin;
+export const canViewAuditLog = isSuperAdmin;
+export const canViewIntegrationStatus = isSuperAdmin;
 
-/** CSV export is Admin-only unless explicitly expanded (§12, last line). */
-export const canExportCsv = isAdmin;
+/** Reports CSV export is Super-Admin-only (§12, last line). */
+export const canExportCsv = isSuperAdmin;
 
 /* -------------------------------------------------------------------------- */
 /* Navigation                                                                  */
@@ -230,7 +245,7 @@ export const canExportCsv = isAdmin;
 /** Which top-level sections a role sees. UI convenience only — never security. */
 export function visibleSections(role: UserRole): string[] {
   switch (role) {
-    case 'ADMIN':
+    case 'SUPER_ADMIN':
       return [
         'dashboard',
         'leads',
@@ -240,11 +255,14 @@ export function visibleSections(role: UserRole): string[] {
         'execution',
         'accounts',
         'reports',
+        'marketing',
         'settings',
       ];
+    case 'ADMIN':
+      return ['dashboard', 'leads', 'follow-ups', 'site-visits', 'designs', 'execution'];
     case 'BDM':
       return ['dashboard', 'leads', 'follow-ups', 'site-visits', 'designs', 'execution'];
-    case 'DESIGNER':
+    case 'LANDSCAPER':
       return ['dashboard', 'designs', 'site-visits'];
     case 'EXECUTION':
       return ['dashboard', 'execution'];
@@ -264,9 +282,9 @@ export function visibleSections(role: UserRole): string[] {
  * A BDM can see that a job closed; only an Admin records what it was worth and
  * only an Admin exports the register.
  */
-export const canRecordAccount = isAdmin;
-export const canViewAccounts = isAdmin;
-export const canExportAccounts = isAdmin;
+export const canRecordAccount = isSuperAdmin;
+export const canViewAccounts = isSuperAdmin;
+export const canExportAccounts = isSuperAdmin;
 
 /* -------------------------------------------------------------------------- */
 /* Customer portal                                                             */

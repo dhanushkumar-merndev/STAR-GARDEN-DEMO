@@ -105,7 +105,11 @@ export async function scheduleSiteVisit(
     .eq('id', designerId)
     .maybeSingle();
 
-  if (!designer || !designer.is_active || designer.role !== 'DESIGNER') {
+  if (
+    !designer ||
+    !designer.is_active ||
+    !['LANDSCAPER', 'ADMIN', 'SUPER_ADMIN'].includes(designer.role)
+  ) {
     throw new AppError('VALIDATION', 'That landscape designer is not available.', {
       fields: { designer_id: 'Choose an active landscape designer.' },
     });
@@ -315,16 +319,31 @@ export async function rescheduleSiteVisit(
  * Start journey is mid-flight, and pulling the remaining steps out from under
  * them is exactly the thing the per-visit flag exists to prevent.
  */
+/**
+ * How many open visits `applyJourneySettingToOpenVisits` would actually
+ * change right now — not how many are merely *eligible*.
+ *
+ * Eligibility (open, not started, no check-in) barely shrinks on its own:
+ * a visit stays eligible until someone starts or completes it, so counting
+ * eligibility alone would keep showing the same large number forever, even
+ * immediately after a successful apply had already brought every one of them
+ * into line. The `neq` below is what actually answers "does this button have
+ * anything left to do" — it drops to 0 the moment nothing is out of sync,
+ * and only grows again once the setting changes or a new visit is booked
+ * under the old value.
+ */
 export async function countConvertibleVisits(user: SessionUser): Promise<number> {
   if (!user.isAdmin) return 0;
   const supabase = await createClient();
+  const { siteVisitJourneyEnabled } = await getSettings();
 
   const { count } = await supabase
     .from('site_visits')
     .select('id', { count: 'exact', head: true })
     .not('status', 'in', '("COMPLETED","CANCELLED")')
     .eq('journey_status', 'NOT_STARTED')
-    .is('check_in_at', null);
+    .is('check_in_at', null)
+    .neq('journey_tracking_enabled', siteVisitJourneyEnabled);
 
   return count ?? 0;
 }
@@ -344,30 +363,45 @@ export async function applyJourneySettingToOpenVisits(
   const { siteVisitJourneyEnabled } = await getSettings();
   const supabase = await createClient();
 
-  const { data: open } = await supabase
+  // Filtered once, not fetched-then-listed-back: the previous version pulled
+  // every open visit's id into memory and sent them all back in a single
+  // `.in(id, [...])` filter. That is fine at seed scale and breaks at real
+  // scale — 798 open visits produced a ~30KB query string, rejected before
+  // it ever reached Postgres. Expressing "not started, no check-in yet" as
+  // filters on the UPDATE itself costs the same whether 5 rows match or
+  // 50,000 do, and `head: true` skips returning the updated rows' bodies —
+  // only the count, from the response header.
+  const { count: totalOpen } = await supabase
     .from('site_visits')
-    .select('id, journey_status, check_in_at')
+    .select('id', { count: 'exact', head: true })
     .not('status', 'in', '("COMPLETED","CANCELLED")');
 
-  const rows = open ?? [];
-  const convertible = rows.filter(
-    (row) => row.journey_status === 'NOT_STARTED' && !row.check_in_at,
-  );
-  const skipped = rows.length - convertible.length;
-
-  if (convertible.length === 0) return { updated: 0, skipped };
-
-  const { error } = await supabase
+  // `count` is an option to `update()` itself here, not to a chained
+  // `.select()` — postgrest-js only accepts a column list on `.select()`
+  // after a mutation. Passing it to `.select()` instead silently drops the
+  // count request rather than erroring, which is exactly what happened here
+  // the first time: the update ran and applied correctly, but the reported
+  // count came back as if nothing had matched.
+  // `neq` here (matching `countConvertibleVisits`) is what makes this
+  // idempotent: pressing Apply a second time with nothing changed touches
+  // zero rows and truthfully reports so, instead of re-writing all 798 rows
+  // to the value they already held and claiming that as "updated".
+  const { error, count: updatedCount } = await supabase
     .from('site_visits')
-    .update({ journey_tracking_enabled: siteVisitJourneyEnabled })
-    .in(
-      'id',
-      convertible.map((row) => row.id),
-    );
+    .update({ journey_tracking_enabled: siteVisitJourneyEnabled }, { count: 'exact' })
+    .not('status', 'in', '("COMPLETED","CANCELLED")')
+    .eq('journey_status', 'NOT_STARTED')
+    .is('check_in_at', null)
+    .neq('journey_tracking_enabled', siteVisitJourneyEnabled);
 
   if (error) {
     throw new AppError('INTERNAL', 'Could not update the open visits.', { cause: error });
   }
+
+  const updated = updatedCount ?? 0;
+  const skipped = (totalOpen ?? 0) - updated;
+
+  if (updated === 0) return { updated: 0, skipped };
 
   await recordAudit({
     actorUserId: user.id,
@@ -375,12 +409,12 @@ export async function applyJourneySettingToOpenVisits(
     entityType: 'site_visit',
     after: {
       journey_tracking_enabled: siteVisitJourneyEnabled,
-      row_count: convertible.length,
+      row_count: updated,
       note: 'Applied the journey setting to open visits that had not started.',
     },
   });
 
-  return { updated: convertible.length, skipped };
+  return { updated, skipped };
 }
 
 /**
@@ -603,7 +637,11 @@ export async function assignVisitDesigner(
     .eq('id', input.designer_id)
     .maybeSingle();
 
-  if (!designer || !designer.is_active || designer.role !== 'DESIGNER') {
+  if (
+    !designer ||
+    !designer.is_active ||
+    !['LANDSCAPER', 'ADMIN', 'SUPER_ADMIN'].includes(designer.role)
+  ) {
     throw new AppError('VALIDATION', 'That landscape designer is not available.', {
       fields: { designer_id: 'Choose an active landscape designer.' },
     });
@@ -734,6 +772,8 @@ export async function completeSiteVisit(
     notes: string;
     requirement_summary?: string;
     design_required: boolean;
+    /** Overrides the visit's own designer for the design that follows. */
+    designer_id?: string;
   },
 ): Promise<SiteVisitRow> {
   const { visit } = await assertCanReadSiteVisit(user, input.site_visit_id);
@@ -744,13 +784,20 @@ export async function completeSiteVisit(
   });
 
   const supabase = await createClient();
+  // `check_out_at` can never be set without `check_in_at` already being set
+  // (site_visits_checkout_after_checkin). With journey tracking off there is
+  // no separate check-in step at all — completion is the one button that
+  // closes the whole visit — so both are stamped together here, from the
+  // same `now`, rather than only the checkout half.
+  const now = new Date().toISOString();
   const { data: updated, error } = await supabase
     .from('site_visits')
     .update({
       status: 'COMPLETED',
       notes: input.notes,
       requirement_summary: input.requirement_summary ?? visit.requirement_summary,
-      check_out_at: visit.check_out_at ?? new Date().toISOString(),
+      check_in_at: visit.check_in_at ?? now,
+      check_out_at: visit.check_out_at ?? now,
     })
     .eq('id', input.site_visit_id)
     .select('*')
@@ -777,12 +824,15 @@ export async function completeSiteVisit(
     })
     .eq('id', visit.lead_id);
 
-  // The designer who attended the site owns the next phase as well. Once an
-  // Admin approves the completed visit, create their design assignment here
-  // instead of making the Admin pick the same person again on the lead page.
+  // The designer who attended the site owns the next phase by default, so the
+  // Admin is not made to pick the same person again on the lead page — but the
+  // completion form can name someone else, which is the case where the visit
+  // was attended by one person and the drawing belongs to another.
   // An existing live design is deliberately left alone: a re-visit must not
   // silently reset a drawing that is already in progress or awaiting review.
-  if (input.design_required && visit.assigned_designer_id) {
+  const designerId = input.designer_id ?? visit.assigned_designer_id;
+
+  if (input.design_required && designerId) {
     const { data: liveProject, error: projectError } = await supabase
       .from('design_projects')
       .select('id, assigned_designer_id, status')
@@ -797,7 +847,7 @@ export async function completeSiteVisit(
     if (!liveProject || (liveProject.status === 'REQUIRED' && !liveProject.assigned_designer_id)) {
       await assignDesigner(user, {
         lead_id: visit.lead_id,
-        designer_id: visit.assigned_designer_id,
+        designer_id: designerId,
         requirement_notes:
           input.requirement_summary ?? updated.requirement_summary ?? undefined,
       });
@@ -811,7 +861,7 @@ export async function completeSiteVisit(
     action: AuditAction.SITE_VISIT_COMPLETED,
     entityType: 'site_visit',
     entityId: updated.id,
-    after: { design_required: input.design_required },
+    after: { design_required: input.design_required, designer_id: designerId ?? null },
   });
 
   return updated;

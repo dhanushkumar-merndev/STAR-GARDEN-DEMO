@@ -27,7 +27,7 @@ export const metadata: Metadata = { title: 'Meta setup' };
  * requires a Vercel change or a redeploy, which is the point.
  */
 export default async function MetaSetupPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
 
   const [accounts, selectedId, mode] = await Promise.all([
     listAdAccounts(user),

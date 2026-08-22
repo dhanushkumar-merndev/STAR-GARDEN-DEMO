@@ -70,7 +70,7 @@ supabase secrets set \
   META_PAGE_ACCESS_TOKEN="<page token with leads_retrieval>" \
   META_ALLOWED_PAGE_IDS="<your page id>" \
   META_APP_SECRET="<from the app's Basic Settings>" \
-  META_VERIFY_TOKEN="<any long random string you invent>" \
+  META_WEBHOOK_VERIFY_TOKEN="<any long random string you invent>" \
   META_SYNC_INTERNAL_SECRET="<any long random string you invent>"
 ```
 
@@ -78,8 +78,10 @@ supabase secrets set \
 every request is checked against an `X-Hub-Signature-256` header computed over
 the raw body. Without it, anyone who guesses the URL could post fake leads.
 
-`META_VERIFY_TOKEN` is only used once, during the handshake in step 4. Invent
-it; it is not issued by Meta.
+`META_WEBHOOK_VERIFY_TOKEN` is only used once, during the handshake in step 4.
+Invent it; it is not issued by Meta. Note the name: the webhook code reads
+`META_WEBHOOK_VERIFY_TOKEN` specifically, not the shorter `META_VERIFY_TOKEN`
+— setting the wrong name here fails step 4 silently, with no clue why.
 
 **`META_AD_ACCOUNT_ID` is deliberately not in that list.** It used to be an
 environment variable. It is now chosen in the CRM and stored in Supabase, so
@@ -104,7 +106,7 @@ verification, because they are called by the CRM and by cron.
 In your app on developers.facebook.com → **Webhooks** → **Page**:
 
 - **Callback URL:** `https://<project-ref>.supabase.co/functions/v1/meta-webhook`
-- **Verify token:** the `META_VERIFY_TOKEN` you invented above
+- **Verify token:** the `META_WEBHOOK_VERIFY_TOKEN` you invented above
 - **Subscribe to field:** `leadgen`
 
 Press **Verify and Save**. Meta immediately sends a `GET` with a challenge; if

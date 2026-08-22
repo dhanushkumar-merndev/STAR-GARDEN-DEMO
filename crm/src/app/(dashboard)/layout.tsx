@@ -57,6 +57,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               height={28}
               priority
               className="h-7 w-auto object-contain"
+              style={{ width: 'auto' }}
             />
           </Link>
 

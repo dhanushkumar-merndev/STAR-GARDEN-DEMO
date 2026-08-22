@@ -10,9 +10,10 @@ import { unarchiveStaffAction } from '@/server/actions/admin';
 import type { ProfileRow, UserRole } from '@/types/database';
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   BDM: 'BDM',
-  DESIGNER: 'Landscape Designer',
+  LANDSCAPER: 'Landscaper',
   EXECUTION: 'Execution Team',
   CLIENT: 'Client',
 };

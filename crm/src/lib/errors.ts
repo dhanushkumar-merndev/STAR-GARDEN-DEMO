@@ -64,6 +64,14 @@ export function ok<T>(data?: T): ActionResult<T | undefined> {
 
 export function fail(error: unknown): ActionResult<never> {
   if (error instanceof AppError) {
+    // INTERNAL is the one code whose message is deliberately generic to the
+    // client (§15 — a raw database message can carry column names and
+    // values). That is exactly why its `cause` must be logged here: without
+    // this, the real reason a save failed is visible nowhere at all, not the
+    // response and not the server log.
+    if (error.code === 'INTERNAL' && error.cause) {
+      console.error('[action] internal error:', error.message, '— cause:', error.cause);
+    }
     return {
       ok: false,
       code: error.code,

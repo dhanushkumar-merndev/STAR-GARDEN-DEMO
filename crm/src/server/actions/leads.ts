@@ -25,6 +25,10 @@ import {
   updateLead as updateLeadService,
 } from '@/server/services/leads';
 import {
+  toggleLeadFavorite as toggleLeadFavoriteService,
+  toggleLeadGlobalStar as toggleLeadGlobalStarService,
+} from '@/server/services/lead-favorites';
+import {
   addNote as addNoteService,
   logCallOutcome as logCallOutcomeService,
   recordCallAttempt as recordCallAttemptService,
@@ -193,5 +197,25 @@ export async function setDesignRequiredAction(
     revalidatePath(`/leads/${lead.id}`);
 
     return { leadId: lead.id };
+  });
+}
+
+/** Personal star: any active staff member, private to them. */
+export async function toggleLeadFavoriteAction(leadId: string): Promise<ActionResult<{ favorited: boolean }>> {
+  return actionResult(async () => {
+    const user = await requireUser();
+    const result = await toggleLeadFavoriteService(user, leadId);
+    revalidatePath('/leads');
+    return result;
+  });
+}
+
+/** Global star: Admin/Super-Admin only, visible to everyone. */
+export async function toggleLeadGlobalStarAction(leadId: string): Promise<ActionResult<{ starred: boolean }>> {
+  return actionResult(async () => {
+    const user = await requireUser();
+    const result = await toggleLeadGlobalStarService(user, leadId);
+    revalidatePath('/leads');
+    return result;
   });
 }

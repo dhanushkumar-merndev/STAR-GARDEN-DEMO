@@ -31,8 +31,12 @@ import type {
  * would hit rate limits and stall on Meta's latency.
  */
 
+// Marketing is Super-Admin-only (an Admin has full operational reach but not
+// this surface).
 function requireAdmin(user: SessionUser): void {
-  if (!user.isAdmin) throw new AppError('FORBIDDEN', 'Meta configuration is Admin-only.');
+  if (!user.isSuperAdmin) {
+    throw new AppError('FORBIDDEN', 'Meta configuration is Super-Admin-only.');
+  }
 }
 
 /* -------------------------------------------------------------------------- */

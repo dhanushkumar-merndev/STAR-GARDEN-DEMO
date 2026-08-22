@@ -113,8 +113,17 @@ export default async function LeadDetailPage({
   ] = await Promise.all([
     getConfigOptions('lost_reason'),
     getBusinessSettings(),
-    canAssignLeadToOthers(user) ? listAssignableBdms() : Promise.resolve([]),
-    writable ? listActiveDesigners() : Promise.resolve([]),
+    canAssignLeadToOthers(user)
+      ? listAssignableBdms({ include: [lead.assigned_bdm_id] })
+      : Promise.resolve([]),
+    writable
+      ? listActiveDesigners({
+          include: [
+            designProject?.assigned_designer_id,
+            ...siteVisits.map((visit) => visit.assigned_designer_id),
+          ],
+        })
+      : Promise.resolve([]),
     writable ? listActiveExecutionStaff() : Promise.resolve([]),
     writable && designProject?.status === 'APPROVED'
       ? listApprovedVersionsForLead(user, leadId).catch(() => [])
@@ -659,7 +668,12 @@ export default async function LeadDetailPage({
                       {user.isAdmin ? (
                         <div className="flex shrink-0 flex-wrap gap-2">
                           {visit.status === 'IN_PROGRESS' ? (
-                            <CompleteVisitDialog siteVisitId={visit.id} triggerLabel="Approve visit" />
+                            <CompleteVisitDialog
+                              siteVisitId={visit.id}
+                              triggerLabel="Approve visit"
+                              designers={designers}
+                              defaultDesignerId={visit.assigned_designer_id}
+                            />
                           ) : null}
                           {visit.status === 'SCHEDULED' || visit.status === 'RESCHEDULED' ? (
                             <RescheduleVisitDialog siteVisitId={visit.id} />

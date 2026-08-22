@@ -47,7 +47,7 @@ export interface NavSection {
   items: NavItem[];
 }
 
-const STAFF: UserRole[] = ['ADMIN', 'BDM', 'DESIGNER', 'EXECUTION'];
+const STAFF: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER', 'EXECUTION'];
 
 export const NAV_SECTIONS: NavSection[] = [
   {
@@ -71,7 +71,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Leads',
         shortLabel: 'Leads',
         icon: LuUsers,
-        roles: ['ADMIN', 'BDM'],
+        roles: ['SUPER_ADMIN', 'ADMIN', 'BDM'],
         primary: true,
       },
       {
@@ -79,7 +79,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Follow-ups',
         shortLabel: 'Tasks',
         icon: LuClipboardList,
-        roles: ['ADMIN', 'BDM'],
+        roles: ['SUPER_ADMIN', 'ADMIN', 'BDM'],
         primary: true,
       },
     ],
@@ -92,7 +92,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Site visits',
         shortLabel: 'Visits',
         icon: LuCalendarDays,
-        roles: ['ADMIN', 'BDM', 'DESIGNER'],
+        roles: ['SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER'],
         primary: true,
       },
       {
@@ -100,7 +100,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Landscape design',
         shortLabel: 'Design',
         icon: LuPencilRuler,
-        roles: ['ADMIN', 'BDM', 'DESIGNER'],
+        roles: ['SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER'],
         primary: true,
       },
       {
@@ -108,7 +108,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Execution',
         shortLabel: 'Work',
         icon: LuHardHat,
-        roles: ['ADMIN', 'BDM', 'EXECUTION'],
+        roles: ['SUPER_ADMIN', 'ADMIN', 'BDM', 'EXECUTION'],
         primary: true,
       },
     ],
@@ -121,21 +121,23 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Accounts',
         shortLabel: 'Accounts',
         icon: LuWallet,
-        roles: ['ADMIN'],
+        // Super-Admin-only: money, in both directions (§ permissions/index.ts
+        // canRecordAccount/canViewAccounts/canExportAccounts).
+        roles: ['SUPER_ADMIN'],
       },
       {
         href: '/reports',
         label: 'Reports',
         shortLabel: 'Reports',
         icon: LuChartColumn,
-        roles: ['ADMIN'],
+        roles: ['SUPER_ADMIN'],
       },
       {
         href: '/marketing/meta-ads',
         label: 'Marketing',
         shortLabel: 'Ads',
         icon: LuMegaphone,
-        roles: ['ADMIN'],
+        roles: ['SUPER_ADMIN'],
       },
     ],
   },
@@ -154,7 +156,9 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Settings',
         shortLabel: 'Settings',
         icon: LuSettings,
-        roles: ['ADMIN'],
+        // Super-Admin-only: this is where roles themselves are handed out, so
+        // an Admin cannot promote a colleague (or themselves) to Super Admin.
+        roles: ['SUPER_ADMIN'],
         matches: ['/profile'],
       },
     ],

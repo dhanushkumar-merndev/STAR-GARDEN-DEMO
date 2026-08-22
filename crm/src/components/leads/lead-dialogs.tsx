@@ -1,10 +1,17 @@
 'use client';
 
+import {
+  searchDesignersAction,
+  searchExecutionStaffAction,
+  searchOwnersAction,
+} from '@/server/actions/people';
+
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Alert, Button, Checkbox, Field, Input, Select, Textarea } from '@/components/ui';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { FilterableChecklist } from '@/components/ui/filterable-checklist';
 import { FormError, PendingFieldset, SubmitButton, fieldError } from '@/components/forms/form-parts';
 import { assignLeadAction, changeLeadStatusAction } from '@/server/actions/leads';
 import {
@@ -91,7 +98,14 @@ export function AssignLeadDialog({
 
           <PendingFieldset>
             <Field label="Assign to" htmlFor="to_user_id" required error={fieldError(result, 'to_user_id')}>
-              <Select id="to_user_id" name="to_user_id" required defaultValue={currentOwnerId ?? ''}>
+              <Select
+                id="to_user_id"
+                name="to_user_id"
+                searchable
+                onSearch={searchOwnersAction}
+                required
+                defaultValue={currentOwnerId ?? ''}
+              >
                 <option value="" disabled>
                   Select an owner
                 </option>
@@ -271,7 +285,13 @@ export function CreateFollowUpDialog({
 
             {canAssign && assignees.length > 0 ? (
               <Field label="Assign to" htmlFor="assigned_to" hint="Defaults to the lead owner.">
-                <Select id="assigned_to" name="assigned_to" defaultValue="">
+                <Select
+                  id="assigned_to"
+                  name="assigned_to"
+                  searchable
+                  onSearch={searchOwnersAction}
+                  defaultValue=""
+                >
                   <option value="">Lead owner</option>
                   {assignees.map((person) => (
                     <option key={person.id} value={person.id}>
@@ -353,7 +373,14 @@ export function ScheduleVisitDialog({
                 error={fieldError(result, 'designer_id')}
                 hint="After the Admin approves the visit, this same designer automatically receives the design task and requirement."
               >
-                <Select id="designer_id" name="designer_id" defaultValue="" required>
+                <Select
+                  id="designer_id"
+                  name="designer_id"
+                  searchable
+                  onSearch={searchDesignersAction}
+                  defaultValue=""
+                  required
+                >
                   <option value="" disabled>
                     Choose a designer
                   </option>
@@ -432,6 +459,8 @@ export function AssignDesignerDialog({
               <Select
                 id="designer_id"
                 name="designer_id"
+                searchable
+                onSearch={searchDesignersAction}
                 required
                 defaultValue={currentDesignerId ?? ''}
               >
@@ -583,19 +612,13 @@ export function StartExecutionDialog({
 
             <fieldset>
               <legend className="mb-1.5 text-sm font-medium text-ink">Assign to</legend>
-              <div className="space-y-1 rounded-lg border border-line p-3">
-                {executionStaff.length === 0 ? (
-                  <p className="text-sm text-ink-muted">No active execution staff yet.</p>
-                ) : (
-                  executionStaff.map((person) => (
-                    <Checkbox
-                      key={person.id}
-                      name="assignee_ids"
-                      value={person.id}
-                      label={person.full_name}
-                    />
-                  ))
-                )}
+              <div className="rounded-lg border border-line p-3">
+                <FilterableChecklist
+                  name="assignee_ids"
+                  items={executionStaff}
+                  onSearch={searchExecutionStaffAction}
+                  emptyLabel="No active execution staff yet."
+                />
               </div>
             </fieldset>
 

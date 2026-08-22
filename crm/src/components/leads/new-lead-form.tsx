@@ -1,5 +1,7 @@
 'use client';
 
+import { searchOwnersAction } from '@/server/actions/people';
+
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -210,7 +212,13 @@ export function NewLeadForm({
             hint={requireAssignee ? 'The Admin handling this lead is the owner.' : 'Leave blank to place it in the unassigned queue.'}
             error={fieldError(result, 'assigned_bdm_id')}
           >
-            <Select id="assigned_bdm_id" name="assigned_bdm_id" defaultValue={defaultAssigneeId ?? ''}>
+            <Select
+              id="assigned_bdm_id"
+              name="assigned_bdm_id"
+              searchable
+              onSearch={searchOwnersAction}
+              defaultValue={defaultAssigneeId ?? ''}
+            >
               {!requireAssignee ? <option value="">Unassigned</option> : null}
               {bdms.map((bdm) => (
                 <option key={bdm.id} value={bdm.id}>

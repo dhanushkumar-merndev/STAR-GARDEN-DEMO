@@ -18,18 +18,18 @@ export default async function DesignsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN', 'BDM', 'DESIGNER');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER');
   const params = await searchParams;
 
   const scope =
     (typeof params.scope === 'string' ? params.scope : undefined) ??
-    (user.role === 'DESIGNER' ? 'MINE' : 'ALL');
+    (user.role === 'LANDSCAPER' ? 'MINE' : 'ALL');
   const designerId = typeof params.designer === 'string' && /^[0-9a-f-]{36}$/i.test(params.designer)
     ? params.designer
     : undefined;
 
   const scopes: { value: DesignScope; label: string }[] =
-    user.role === 'DESIGNER'
+    user.role === 'LANDSCAPER'
       ? [
           { value: 'MINE', label: 'My designs' },
           { value: 'DUE', label: 'Due soon' },
@@ -54,7 +54,7 @@ export default async function DesignsPage({
       <PageHeader
         title="Designs"
         subtitle={
-          user.role === 'DESIGNER'
+          user.role === 'LANDSCAPER'
             ? 'Projects assigned to you'
             : `${total} design ${total === 1 ? 'project' : 'projects'}`
         }
@@ -74,7 +74,7 @@ export default async function DesignsPage({
             icon={<LuPencilRuler className="size-8" />}
             title="No design projects here"
             description={
-              user.role === 'DESIGNER'
+              user.role === 'LANDSCAPER'
                 ? 'Projects assigned to you will appear here.'
                 : 'Mark a lead as needing a design, then assign a designer.'
             }

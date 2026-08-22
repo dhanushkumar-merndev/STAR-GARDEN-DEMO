@@ -8,8 +8,10 @@ import { DueBadge, LeadStatusBadge, SourceBadge } from '@/components/status';
 import { maskMobile } from '@/lib/utils/phone';
 import { LeadFilterForm } from '@/components/leads/lead-filter-form';
 import { LeadStageTabs } from '@/components/leads/lead-stage-tabs';
+import { LeadStarButton } from '@/components/leads/lead-star-button';
 import { parseStatusFilter, type LeadListQuery } from '@/lib/leads/status-filters';
-import { MobileSheet } from '@/components/ui/mobile-sheet';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { listFavoritedLeadIds } from '@/server/services/lead-favorites';
 
 export const metadata: Metadata = { title: 'Leads' };
 
@@ -27,7 +29,7 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN', 'BDM');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM');
   const params = await searchParams;
 
   const read = (key: string): string | undefined => {
@@ -46,9 +48,17 @@ export default async function LeadsPage({
 
   const [{ items, total, page, pageSize }, bdms, stageCounts] = await Promise.all([
     listLeads(user, filters),
-    user.isAdmin ? listAssignableBdms() : Promise.resolve([]),
+    user.isAdmin ? listAssignableBdms({ include: [filters.assignedTo] }) : Promise.resolve([]),
     countLeadsByStage(user, filters),
   ]);
+
+  // Scoped to this one page of leads, not every favourite the user has ever
+  // made — the same "query for what's on screen, not for everything" shape
+  // as the rest of this page's queries.
+  const favoritedIds = await listFavoritedLeadIds(
+    user,
+    items.map((lead) => lead.id),
+  );
 
   const current: LeadListQuery = {
     q: filters.search ?? '',
@@ -66,21 +76,45 @@ export default async function LeadsPage({
       <PageHeader
         title="Leads"
         subtitle={`${total} ${total === 1 ? 'lead' : 'leads'}${scopeLabel ? ` · ${scopeLabel}` : ''}`}
+        fullWidthActionOnMobile
         action={
-          <div className="flex items-center gap-2">
-            <Link href="/leads/new">
-              <Button className="gap-1.5"><LuPlus className="size-4" />New lead</Button>
+          // On a phone New lead takes the whole row and the filter trigger is
+          // a fixed 44px square beside it — the same icon-only control the
+          // dashboard uses for its date range, and the label would only eat
+          // width the primary action needs. From `lg` up the trigger is gone
+          // entirely (the filter form is inline on the page instead), so New
+          // lead drops back to its normal compact size.
+          <div className="flex w-full items-center gap-2 lg:w-auto">
+            <Link href="/leads/new" className="min-w-0 flex-1 lg:flex-none">
+              <Button className="w-full gap-1.5 lg:w-auto"><LuPlus className="size-4" />New lead</Button>
             </Link>
-            <MobileSheet label="Filter" title="Filter leads" description="Search and narrow this lead view." icon={<LuSlidersHorizontal className="size-4" />}>
-              <LeadFilterForm isAdmin={user.isAdmin} bdms={bdms} initial={current} />
-            </MobileSheet>
+            <div className="lg:hidden">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Filter leads"
+                    className="tap flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-brand-700 shadow-sm transition hover:bg-brand-50"
+                  >
+                    <LuSlidersHorizontal className="size-5" />
+                  </button>
+                </DialogTrigger>
+                <DialogContent title="Filter leads" description="Search and narrow this lead view.">
+                  <LeadFilterForm isAdmin={user.isAdmin} bdms={bdms} initial={current} />
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         }
       />
 
       <Card className="mb-4 hidden lg:block">
         <LeadFilterForm
-          key={`${filters.search ?? ''}|${filters.status ?? 'ALL'}|${filters.source ?? 'ALL'}|${filters.assignedTo ?? 'ALL'}|${filters.scope ?? ''}`}
+          /* Deliberately no `filters.search` in the key. The search box applies
+             as you type now, so keying on it would remount the form — and take
+             the cursor with it — on the very navigation the typing caused. The
+             other filters still reset it, which is what the key is for. */
+          key={`${filters.status ?? 'ALL'}|${filters.source ?? 'ALL'}|${filters.assignedTo ?? 'ALL'}|${filters.scope ?? ''}`}
           isAdmin={user.isAdmin}
           bdms={bdms}
           initial={current}
@@ -111,23 +145,20 @@ export default async function LeadsPage({
           <ul className="divide-y divide-line">
             {items.map((lead) => {
               return (
-                <li key={lead.id}>
+                <li key={lead.id} className="flex items-start">
                   <Link
                     href={`/leads/${lead.id}`}
-                    className="block px-4 py-3 transition-colors hover:bg-surface-muted"
+                    className="block min-w-0 flex-1 px-4 py-3 transition-colors hover:bg-surface-muted"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">
-                          {lead.customer_name}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-ink-muted">
-                          {lead.lead_code} ·{' '}
-                          {maskMobile(lead.mobile_country_code, lead.mobile_normalized)}
-                          {lead.location_text ? ` · ${lead.location_text}` : ''}
-                        </p>
-                      </div>
-                      <LeadStatusBadge value={lead.status} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">
+                        {lead.customer_name}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-ink-muted">
+                        {lead.lead_code} ·{' '}
+                        {maskMobile(lead.mobile_country_code, lead.mobile_normalized)}
+                        {lead.location_text ? ` · ${lead.location_text}` : ''}
+                      </p>
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -143,6 +174,22 @@ export default async function LeadsPage({
                       {lead.design_required ? <Badge tone="info">Design required</Badge> : null}
                     </div>
                   </Link>
+
+                  {/* The status badge sits in this column rather than inside
+                      the link, so it is a flex sibling of the star and pin and
+                      shares their centre line by construction. Matching the
+                      two columns' paddings instead only ever gets close: the
+                      badge is a 22px chip and the icon buttons are 44px touch
+                      targets, so the badge rode above them. */}
+                  <div className="flex shrink-0 items-center gap-1.5 py-3 pr-2">
+                    <LeadStatusBadge value={lead.status} />
+                    <LeadStarButton
+                      leadId={lead.id}
+                      isGloballyStarred={lead.is_starred}
+                      isFavorited={favoritedIds.has(lead.id)}
+                      canSetGlobal={user.isAdmin}
+                    />
+                  </div>
                 </li>
               );
             })}

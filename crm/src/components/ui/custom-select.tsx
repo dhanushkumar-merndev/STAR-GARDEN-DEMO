@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { LuCheck, LuChevronDown } from 'react-icons/lu';
+import { LuCheck, LuChevronDown, LuLoaderCircle, LuSearch } from 'react-icons/lu';
 import { cn } from '@/lib/utils/cn';
 
 type SelectOption = {
@@ -19,12 +19,56 @@ export type CustomSelectProps = Omit<
   value?: string;
   defaultValue?: string;
   onChange?: React.ChangeEventHandler<HTMLSelectElement>;
+  /**
+   * Force the search box on regardless of how many options there are.
+   *
+   * Every picker that lists *people* passes this. A team of three today is a
+   * team of thirty next year, and staff should not have to learn that the
+   * same "Owner" dropdown types in some places and not others — the control
+   * behaves one way wherever a name is being chosen. Left unset, the search
+   * box still appears on its own past `SEARCH_THRESHOLD`.
+   */
+  searchable?: boolean;
+  /**
+   * Ask the server for matches instead of filtering the options already in
+   * the page — a Server Action taking what was typed and returning the
+   * options to show.
+   *
+   * This is what keeps a picker's cost proportional to what is on screen
+   * rather than to the size of the table behind it. The page renders one
+   * screenful of options; typing asks for the rest, debounced by
+   * `SEARCH_DEBOUNCE_MS` so a name typed at speed costs one query and not one
+   * per keystroke. Clearing the box returns to the options the page shipped,
+   * with no request at all.
+   */
+  onSearch?: (search: string) => Promise<{ value: string; label: string }[]>;
 };
+
+/** Below this many real options, a search box only adds a step with nothing to filter. */
+const SEARCH_THRESHOLD = 7;
+
+/** Long enough to finish a name, short enough not to feel like a wait. */
+const SEARCH_DEBOUNCE_MS = 500;
+
+/**
+ * Below this, typing filters what the page already sent instead of asking the
+ * server. Postgres' trigram index needs three characters to match on, so a one
+ * or two letter `ilike '%a%'` is a sequential scan of the staff table that
+ * would also match nearly everyone — a scan to answer a useless question.
+ */
+const SEARCH_MIN_LENGTH = 3;
 
 /**
  * A form-compatible Radix select that accepts normal `<option>` children.
  * Keeping the native-looking API means every existing CRM form gets the same
  * accessible custom menu without rewriting its validation or FormData flow.
+ *
+ * Past `SEARCH_THRESHOLD` options — or on any picker that passes `searchable`,
+ * which every people picker does — a search box appears above the list and the
+ * list itself caps at roughly three rows with a scrollbar for the rest, rather
+ * than one long list a hundred names deep with no way to jump to one. With
+ * `onSearch` the typing goes to the server, so the page never has to ship the
+ * whole list to begin with.
  */
 export function CustomSelect({
   children,
@@ -34,7 +78,9 @@ export function CustomSelect({
   id,
   name,
   onChange,
+  onSearch,
   required,
+  searchable: searchableProp,
   value,
   ...props
 }: CustomSelectProps) {
@@ -45,6 +91,121 @@ export function CustomSelect({
   const [internalValue, setInternalValue] = React.useState(() => defaultValue ?? firstSelectable);
   const selectedValue = controlled ? value ?? '' : internalValue;
 
+  const [query, setQuery] = React.useState('');
+  const searchRef = React.useRef<HTMLInputElement>(null);
+
+  const selectable = React.useMemo(() => options.filter((option) => option.value !== ''), [options]);
+  // A forced search box still needs something to filter: with one option
+  // there is nothing to type towards, so it would only be a step in the way.
+  // Server-backed pickers are the exception — the one option on screen is a
+  // page of many, and the rest are a keystroke away.
+  const searchable = onSearch
+    ? true
+    : searchableProp
+      ? selectable.length > 1
+      : options.length > SEARCH_THRESHOLD + 1; // +1 for the blank placeholder option
+
+  /* ---------------------------------------------------------------------- */
+  /* Server-backed search                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  const [results, setResults] = React.useState<SelectOption[] | null>(null);
+  const [searching, setSearching] = React.useState(false);
+  // Labels for people the page never shipped, learned from search results —
+  // see `pinned` below for what they are for.
+  const [knownLabels, setKnownLabels] = React.useState<Record<string, string>>({});
+
+  // Held in a ref so a call site passing an inline arrow cannot restart the
+  // debounce on every render.
+  const onSearchRef = React.useRef(onSearch);
+  React.useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
+
+  // Bumped per request, so a slow answer to "ab" can never overwrite the
+  // answer to "abhi" that the user is already looking at.
+  const requestRef = React.useRef(0);
+
+  /**
+   * The debounce itself. Clearing the box and the "searching…" flag belong to
+   * the change handler below rather than here: an effect that sets state
+   * synchronously just to react to its own input is a cascading render, and
+   * the state in question is a direct consequence of a keystroke.
+   */
+  React.useEffect(() => {
+    if (!onSearch) return;
+
+    const search = query.trim();
+    if (search.length < SEARCH_MIN_LENGTH) return;
+
+    const request = ++requestRef.current;
+    const timer = setTimeout(async () => {
+      try {
+        const found = (await onSearchRef.current?.(search)) ?? [];
+        if (requestRef.current !== request) return;
+        setResults(found.map((option) => ({ ...option, disabled: false })));
+        setKnownLabels((previous) => {
+          let changed = false;
+          const next = { ...previous };
+          for (const option of found) {
+            if (next[option.value] !== option.label) {
+              next[option.value] = option.label;
+              changed = true;
+            }
+          }
+          return changed ? next : previous;
+        });
+      } catch {
+        // A failed lookup shows "No match" rather than an empty menu with no
+        // explanation; the next keystroke retries on its own.
+        if (requestRef.current === request) setResults([]);
+      } finally {
+        if (requestRef.current === request) setSearching(false);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [query, onSearch]);
+
+  /* ---------------------------------------------------------------------- */
+  /* What the menu shows                                                     */
+  /* ---------------------------------------------------------------------- */
+
+  const base = results ?? selectable;
+
+  // The chosen option has to stay in the list even once the results it came
+  // from are gone: Radix renders the trigger's label from the selected item's
+  // own text node — and keeps that item mounted in a detached fragment while
+  // the menu is closed — so dropping it blanks the control back to its
+  // placeholder. Unmounting it also costs the search box its focus (see the
+  // Viewport comment below). Picking someone from a search result and then
+  // clearing the query is exactly that case, so the label remembered from
+  // that result re-renders the chosen one.
+  const pinnedLabel = selectedValue ? knownLabels[selectedValue] : undefined;
+  const pinned =
+    pinnedLabel && !base.some((option) => option.value === selectedValue)
+      ? { value: selectedValue, label: pinnedLabel, disabled: false }
+      : null;
+
+  const shown = pinned ? [...base, pinned] : base;
+
+  const needle = query.trim().toLowerCase();
+  const matches = (option: SelectOption) => !needle || option.label.toLowerCase().includes(needle);
+  const visible = shown.filter(matches);
+
+  function handleQueryChange(next: string) {
+    setQuery(next);
+    if (!onSearch) return;
+    // Whatever is in flight answers a query the user has already moved past.
+    requestRef.current += 1;
+    if (next.trim().length >= SEARCH_MIN_LENGTH) {
+      setSearching(true);
+    } else {
+      setResults(null);
+      setSearching(false);
+    }
+  }
+
   function handleValueChange(nextValue: string) {
     if (!controlled) setInternalValue(nextValue);
     onChange?.({
@@ -53,11 +214,25 @@ export function CustomSelect({
     } as React.ChangeEvent<HTMLSelectElement>);
   }
 
+  function handleOpenChange(open: boolean) {
+    if (open) {
+      setQuery('');
+      // Radix moves focus to the selected item on open; grabbing it back
+      // onto the search box is what makes typing work the instant it opens.
+      if (searchable) requestAnimationFrame(() => searchRef.current?.focus());
+    } else {
+      requestRef.current += 1;
+      setResults(null);
+      setSearching(false);
+    }
+  }
+
   return (
     <SelectPrimitive.Root
       name={name}
       value={selectedValue || undefined}
       onValueChange={handleValueChange}
+      onOpenChange={handleOpenChange}
       disabled={disabled}
       required={required}
     >
@@ -82,24 +257,88 @@ export function CustomSelect({
         <SelectPrimitive.Content
           position="popper"
           sideOffset={6}
-          className="z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line bg-surface p-1 shadow-lg"
+          // Typing in the search box must not also move the Radix "roving
+          // highlight" that arrow keys/typeahead normally drive — that's
+          // what double-filters (once by our query, once by Radix's own
+          // first-letter jump) and fights the cursor. Only search box
+          // keystrokes are exempted below; item navigation is untouched.
+          onCloseAutoFocus={(event) => searchable && event.preventDefault()}
+          className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line bg-surface p-1 shadow-lg"
         >
-          <SelectPrimitive.Viewport className="max-h-72 overflow-y-auto">
-            {options
-              .filter((option) => option.value !== '')
-              .map((option) => (
+          {searchable ? (
+            <div className="relative mb-1 border-b border-line px-1 pb-1">
+              {searching ? (
+                <LuLoaderCircle
+                  className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 animate-spin text-brand-600"
+                  aria-hidden="true"
+                />
+              ) : (
+                <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-ink-subtle" />
+              )}
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(event) => handleQueryChange(event.target.value)}
+                onKeyDown={(event) => {
+                  // Radix's own typeahead intercepts a-z keystrokes on the
+                  // Content element before they reach here unless stopped —
+                  // it would otherwise jump-select by first letter on top of
+                  // our filtering.
+                  event.stopPropagation();
+                  if (event.key === 'Enter' && visible.length > 0) {
+                    event.preventDefault();
+                    handleValueChange(visible[0]!.value);
+                  }
+                }}
+                placeholder="Search…"
+                className="h-8 w-full rounded-md border-0 bg-surface-muted py-1.5 pr-2 pl-8 text-sm text-ink placeholder:text-ink-subtle focus:outline-none"
+                onClick={(event) => event.stopPropagation()}
+              />
+            </div>
+          ) : null}
+
+          <SelectPrimitive.Viewport
+            className={cn('overflow-y-auto', searchable ? 'max-h-32' : 'max-h-72')}
+          >
+            {/* Every option stays mounted; the ones that do not match are
+                hidden rather than removed.
+
+                Unmounting them is what made the search box lose focus after a
+                keystroke. Radix tracks the selected item as *state* (set from
+                each Item's ref callback) and re-runs `focusSelectedItem()`
+                whenever that state changes. Filtering the selected option out
+                of the tree fires its ref callback with `null`, so Radix falls
+                through to focusing the Content element — pulling focus off the
+                input mid-word, which is exactly what happened as soon as the
+                query stopped matching the current selection. Hiding keeps the
+                ref attached, so Radix has no reason to move focus at all.
+
+                `disabled` on a hidden option keeps arrow keys from walking
+                into it — Radix's Up/Down handler skips disabled items. */}
+            {shown.map((option) => {
+              const isVisible = matches(option);
+              return (
                 <SelectPrimitive.Item
                   key={option.value}
                   value={option.value}
-                  disabled={option.disabled}
-                  className="relative flex min-h-10 cursor-pointer select-none items-center rounded-md py-2 pr-8 pl-3 text-sm text-ink outline-none data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+                  disabled={option.disabled || !isVisible}
+                  className={cn(
+                    'relative flex min-h-10 cursor-pointer select-none items-center rounded-md py-2 pr-8 pl-3 text-sm text-ink outline-none data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
+                    !isVisible && 'hidden',
+                  )}
                 >
                   <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                   <SelectPrimitive.ItemIndicator className="absolute right-3 inline-flex items-center text-brand-700">
                     <LuCheck className="size-4" aria-hidden="true" />
                   </SelectPrimitive.ItemIndicator>
                 </SelectPrimitive.Item>
-              ))}
+              );
+            })}
+            {visible.length === 0 ? (
+              <p className="px-3 py-4 text-center text-sm text-ink-subtle">
+                {searching ? 'Searching…' : 'No match'}
+              </p>
+            ) : null}
           </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>
       </SelectPrimitive.Portal>

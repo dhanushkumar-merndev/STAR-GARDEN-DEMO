@@ -25,7 +25,7 @@ export default async function ExecutionPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN', 'BDM', 'EXECUTION');
+  const user = await requirePageRole('SUPER_ADMIN', 'ADMIN', 'BDM', 'EXECUTION');
   const params = await searchParams;
 
   const scope =

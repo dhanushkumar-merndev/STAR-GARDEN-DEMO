@@ -55,7 +55,7 @@ export default async function AccountsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const params = await searchParams;
 
   const tab = (TABS.find((t) => t.key === params.tab)?.key ?? 'READY') as AccountsTab;

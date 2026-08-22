@@ -20,7 +20,18 @@ export interface SessionUser {
   email: string | null;
   profile: ProfileRow;
   role: UserRole;
+  /**
+   * ADMIN or SUPER_ADMIN. This is the operational bypass — every place that
+   * already trusted "isAdmin" (leads, designs, execution, the analytics
+   * dashboard, audit trails on individual records) keeps trusting it, and a
+   * Super Admin now gets the same bypass for free, as a strict superset.
+   *
+   * It is deliberately NOT the gate for Accounts, Reports, Marketing or
+   * Settings — those are Super-Admin-only, see `isSuperAdmin`.
+   */
   isAdmin: boolean;
+  /** SUPER_ADMIN only. Gates Accounts, Reports, Marketing and Settings. */
+  isSuperAdmin: boolean;
 }
 
 /**
@@ -55,7 +66,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     email: user.email ?? profile.email,
     profile,
     role: profile.role,
-    isAdmin: profile.role === 'ADMIN',
+    isAdmin: profile.role === 'ADMIN' || profile.role === 'SUPER_ADMIN',
+    isSuperAdmin: profile.role === 'SUPER_ADMIN',
   };
 });
 
@@ -106,7 +118,8 @@ export async function getAccessState(): Promise<AccessState> {
       email: user.email ?? profile.email,
       profile,
       role: profile.role,
-      isAdmin: profile.role === 'ADMIN',
+      isAdmin: profile.role === 'ADMIN' || profile.role === 'SUPER_ADMIN',
+      isSuperAdmin: profile.role === 'SUPER_ADMIN',
     },
   };
 }
@@ -133,8 +146,18 @@ export async function requireRole(...roles: UserRole[]): Promise<SessionUser> {
   return user;
 }
 
+/** ADMIN or SUPER_ADMIN — the operational bypass (§ SessionUser.isAdmin). */
 export async function requireAdmin(): Promise<SessionUser> {
-  return requireRole('ADMIN');
+  const user = await requireUser();
+  if (!user.isAdmin) {
+    throw forbidden('This action is restricted to Admin or Super Admin.');
+  }
+  return user;
+}
+
+/** SUPER_ADMIN only — Accounts, Reports, Marketing, Settings. */
+export async function requireSuperAdmin(): Promise<SessionUser> {
+  return requireRole('SUPER_ADMIN');
 }
 
 /**
@@ -165,17 +188,19 @@ export async function requirePageRole(...roles: UserRole[]): Promise<SessionUser
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   BDM: 'Business Development Manager',
-  DESIGNER: 'Landscape Designer',
+  LANDSCAPER: 'Landscaper',
   EXECUTION: 'Execution Team',
   CLIENT: 'Customer',
 };
 
 export const ROLE_SHORT_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   BDM: 'BDM',
-  DESIGNER: 'Landscape',
+  LANDSCAPER: 'Landscaper',
   EXECUTION: 'Execution',
   CLIENT: 'Customer',
 };
@@ -187,13 +212,17 @@ export const ROLE_SHORT_LABELS: Record<UserRole, string> = {
  * what to do next instead of just being told a code word.
  */
 export const ROLE_SUMMARIES: Record<UserRole, string> = {
+  SUPER_ADMIN:
+    'You have full access: every lead, every site visit, every design and execution ' +
+    'project, plus Accounts, Reports, Marketing and Settings — including who else ' +
+    'has access to what.',
   ADMIN:
-    'You can see every lead, assign work, schedule site visits, approve designs, ' +
-    'hand over to execution, and record project values in Accounts.',
+    'You can see every lead, assign work, schedule site visits, attend and design ' +
+    'them yourself if needed, and hand over to execution.',
   BDM:
     'You can work the leads assigned to you: call the customer, record the outcome, ' +
     'set follow-ups, and hand qualified leads on for a site visit.',
-  DESIGNER:
+  LANDSCAPER:
     'You attend the site visits booked for you, then upload design versions for ' +
     'approval. Your design work unlocks once the site visit is complete.',
   EXECUTION:

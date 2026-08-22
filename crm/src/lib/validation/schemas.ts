@@ -60,14 +60,15 @@ export const callOutcomeSchema = z.enum([
 ]);
 
 /**
- * Roles an Admin may hand out from the Users screen.
+ * Roles a Super Admin may hand out from the Users screen (Settings > Users is
+ * Super-Admin-only).
  *
  * CLIENT is absent on purpose: a customer login is created by granting portal
  * access to a lead, never by editing a staff record. Letting it be picked here
- * would let an Admin turn a colleague into a customer, which does not undo
- * cleanly.
+ * would let a Super Admin turn a colleague into a customer, which does not
+ * undo cleanly.
  */
-export const userRoleSchema = z.enum(['ADMIN', 'BDM', 'DESIGNER', 'EXECUTION']);
+export const userRoleSchema = z.enum(['SUPER_ADMIN', 'ADMIN', 'BDM', 'LANDSCAPER', 'EXECUTION']);
 
 export const paymentStatusSchema = z.enum(['PENDING', 'PARTIAL', 'PAID', 'WRITTEN_OFF']);
 
@@ -308,6 +309,14 @@ export const completeSiteVisitSchema = z.object({
   notes: requiredText('Visit notes', 2000),
   requirement_summary: optionalText(2000),
   design_required: checkboxField,
+  /**
+   * Who picks up the design, when one is being started.
+   *
+   * Optional because the visit's own designer is the default and the field is
+   * only rendered when the design box is ticked; an empty string (the "keep the
+   * designer who attended" choice) means the same as sending nothing.
+   */
+  designer_id: uuid.optional().or(z.literal('').transform(() => undefined)),
 });
 
 /* -------------------------------------------------------------------------- */

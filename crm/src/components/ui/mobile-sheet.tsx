@@ -3,14 +3,22 @@
 import type { ReactNode } from 'react';
 import { LuX } from 'react-icons/lu';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { cn } from '@/lib/utils/cn';
 
 /** Mobile-only bottom sheet. Radix locks body scroll while the sheet is open. */
-export function MobileSheet({ label, title, description, icon, children }: {
+export function MobileSheet({ label, title, description, icon, children, triggerClassName }: {
   label: string; title: string; description?: string; icon?: ReactNode; children: ReactNode;
+  /** Extra classes on the trigger button — e.g. `flex-1` to match a sibling button's width. */
+  triggerClassName?: string;
 }) {
   return (
     <DialogPrimitive.Root>
-      <DialogPrimitive.Trigger className="tap inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink shadow-sm hover:bg-surface-muted lg:hidden">
+      <DialogPrimitive.Trigger
+        className={cn(
+          'tap inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink shadow-sm hover:bg-surface-muted lg:hidden',
+          triggerClassName,
+        )}
+      >
         {icon}{label}
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>

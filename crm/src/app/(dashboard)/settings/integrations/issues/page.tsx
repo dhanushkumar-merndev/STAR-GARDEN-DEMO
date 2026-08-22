@@ -10,7 +10,7 @@ import { formatDateTime } from '@/lib/utils/format';
 export const metadata: Metadata = { title: 'Meta integration issues' };
 
 export default async function IntegrationIssuesPage() {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const health = await getMetaHealth(user);
 
   return (

@@ -18,7 +18,7 @@ export default async function MetaMappingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePageRole('ADMIN');
+  const user = await requirePageRole('SUPER_ADMIN');
   const params = await searchParams;
   const campaigns = await listCampaigns(user);
   const campaignId = typeof params.campaign === 'string' ? params.campaign : campaigns[0]?.id;
