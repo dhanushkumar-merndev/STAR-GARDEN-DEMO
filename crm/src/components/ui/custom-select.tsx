@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { LuCheck, LuChevronDown, LuLoaderCircle, LuSearch } from 'react-icons/lu';
 import { cn } from '@/lib/utils/cn';
 
@@ -58,6 +59,29 @@ const SEARCH_DEBOUNCE_MS = 500;
  */
 const SEARCH_MIN_LENGTH = 3;
 
+/** One look for the closed control, whichever menu is behind it. */
+const TRIGGER_CLASSES =
+  'flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 text-left text-ink transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-subtle';
+
+/**
+ * Whether this is a touch device, tracked live (a tablet can gain a mouse).
+ *
+ * `useSyncExternalStore` rather than an effect: it has an explicit server
+ * snapshot, so the first client render matches the HTML instead of flipping
+ * the whole control on hydration.
+ */
+function useCoarsePointer(): boolean {
+  return React.useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia('(pointer: coarse)');
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia('(pointer: coarse)').matches,
+    () => false,
+  );
+}
+
 /**
  * A form-compatible Radix select that accepts normal `<option>` children.
  * Keeping the native-looking API means every existing CRM form gets the same
@@ -69,6 +93,16 @@ const SEARCH_MIN_LENGTH = 3;
  * than one long list a hundred names deep with no way to jump to one. With
  * `onSearch` the typing goes to the server, so the page never has to ship the
  * whole list to begin with.
+ *
+ * On a touch device the options open in a bottom sheet instead of Radix's
+ * popper. A popper and a virtual keyboard fight: Radix moves focus onto the
+ * selected item once the popper reports its position, which shuts the keyboard
+ * the search box just opened; its content locks body scrolling on top of the
+ * mobile shell's own lock, which shifts the trigger out from under the finger
+ * mid-tap so the menu dismisses itself; and the trigger stops toggling because
+ * the tap that should close it is treated as an outside press that reopens it.
+ * The sheet is a plain dialog with a plain input, so none of that applies — and
+ * it is the pattern the rest of this app's mobile surfaces already use.
  */
 export function CustomSelect({
   children,
@@ -93,6 +127,9 @@ export function CustomSelect({
 
   const [query, setQuery] = React.useState('');
   const searchRef = React.useRef<HTMLInputElement>(null);
+  const touch = useCoarsePointer();
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const listboxId = React.useId();
 
   const selectable = React.useMemo(() => options.filter((option) => option.value !== ''), [options]);
   // A forced search box still needs something to filter: with one option
@@ -125,6 +162,9 @@ export function CustomSelect({
   // Bumped per request, so a slow answer to "ab" can never overwrite the
   // answer to "abhi" that the user is already looking at.
   const requestRef = React.useRef(0);
+
+  /** When the menu opened, so the tap that opened it cannot also dismiss it. */
+  const openedAtRef = React.useRef(0);
 
   /**
    * The debounce itself. Clearing the box and the "searching…" flag belong to
@@ -217,14 +257,154 @@ export function CustomSelect({
   function handleOpenChange(open: boolean) {
     if (open) {
       setQuery('');
-      // Radix moves focus to the selected item on open; grabbing it back
-      // onto the search box is what makes typing work the instant it opens.
-      if (searchable) requestAnimationFrame(() => searchRef.current?.focus());
+      /**
+       * Auto-focus the search box on pointer devices only.
+       *
+       * Radix focuses the selected item once the popper reports it has been
+       * positioned — an effect keyed on `isPositioned`, which lands a frame or
+       * two after open, i.e. *after* this. On a desktop that race is invisible.
+       * On a phone it is not: our focus opens the virtual keyboard, Radix takes
+       * focus back onto a `div`, and the keyboard closes again — a flash of
+       * keyboard for every dropdown tap, which is the bug this guards.
+       *
+       * A touch user has to tap the field to type anyway, and by then the
+       * positioning effect has already run and has nothing left to steal.
+       */
+      const touch = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+      if (searchable && !touch) requestAnimationFrame(() => searchRef.current?.focus());
+      openedAtRef.current = Date.now();
     } else {
       requestRef.current += 1;
       setResults(null);
       setSearching(false);
     }
+  }
+
+  const selectedLabel = shown.find((option) => option.value === selectedValue)?.label;
+  const sheetTitle = props['aria-label'] ?? placeholder;
+
+  const searchBox = searchable ? (
+    <div className="relative">
+      {searching ? (
+        <LuLoaderCircle
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 animate-spin text-brand-600"
+          aria-hidden="true"
+        />
+      ) : (
+        <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-subtle" />
+      )}
+      <input
+        ref={searchRef}
+        value={query}
+        onChange={(event) => handleQueryChange(event.target.value)}
+        placeholder="Search…"
+        className="h-11 w-full rounded-lg border border-line bg-surface py-1.5 pr-3 pl-9 text-sm text-ink placeholder:text-ink-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+      />
+    </div>
+  ) : null;
+
+  if (touch) {
+    return (
+      <>
+        {/* Radix's own hidden `<select>` goes with the popper, so the form
+            needs this to keep submitting a value. Native `required` is lost
+            with it — every one of these forms validates on the server, which
+            is where the real check has always been. */}
+        {name ? <input type="hidden" name={name} value={selectedValue} /> : null}
+
+        <button
+          type="button"
+          id={id}
+          disabled={disabled}
+          // `combobox`, not the implicit `button`: a button role carries
+          // neither `aria-invalid` nor `aria-expanded`, and this control is
+          // exactly what combobox describes — a value plus a list to pick from.
+          role="combobox"
+          aria-label={props['aria-label']}
+          aria-invalid={props['aria-invalid']}
+          aria-describedby={props['aria-describedby']}
+          aria-haspopup="listbox"
+          aria-expanded={sheetOpen}
+          aria-controls={listboxId}
+          onClick={() => {
+            setSheetOpen(true);
+            handleOpenChange(true);
+          }}
+          className={cn(TRIGGER_CLASSES, !selectedLabel && 'text-ink-subtle', className)}
+        >
+          <span className="truncate">{selectedLabel ?? placeholder}</span>
+          <LuChevronDown className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
+        </button>
+
+        <DialogPrimitive.Root
+          open={sheetOpen}
+          onOpenChange={(next) => {
+            setSheetOpen(next);
+            handleOpenChange(next);
+          }}
+        >
+          <DialogPrimitive.Portal>
+            {/* A plain backdrop, not Radix Overlay — the same reason
+                `MobileSheet` gives: the authenticated mobile shell already
+                locks the document and scrolls `<main>`, and a second
+                react-remove-scroll lock on top of that moves that scroller. */}
+            <div aria-hidden="true" className="fixed inset-0 z-50 bg-black/40" style={{ pointerEvents: 'auto' }} />
+            <DialogPrimitive.Content
+              // No auto-focus: on a phone that opens the keyboard over the
+              // list before anyone has asked to type. Tapping the search box
+              // opens it, and by then nothing is left to steal focus back.
+              onOpenAutoFocus={(event) => event.preventDefault()}
+              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl bg-surface shadow-2xl"
+            >
+              <div className="shrink-0 space-y-3 border-b border-line px-4 py-3">
+                <DialogPrimitive.Title className="text-base font-semibold text-ink">
+                  {sheetTitle}
+                </DialogPrimitive.Title>
+                <DialogPrimitive.Description className="sr-only">{sheetTitle}</DialogPrimitive.Description>
+                {searchBox}
+              </div>
+
+              <div
+                id={listboxId}
+                role="listbox"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2"
+                style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+              >
+                {visible.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-ink-subtle">
+                    {searching ? 'Searching…' : 'No match'}
+                  </p>
+                ) : (
+                  visible.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={option.value === selectedValue}
+                      disabled={option.disabled}
+                      onClick={() => {
+                        handleValueChange(option.value);
+                        setSheetOpen(false);
+                        handleOpenChange(false);
+                      }}
+                      className={cn(
+                        'tap flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left text-sm text-ink disabled:opacity-50',
+                        option.value === selectedValue && 'bg-brand-50 font-medium text-brand-900',
+                      )}
+                    >
+                      <span className="truncate">{option.label}</span>
+                      {option.value === selectedValue ? (
+                        <LuCheck className="size-4 shrink-0 text-brand-700" aria-hidden="true" />
+                      ) : null}
+                    </button>
+                  ))
+                )}
+              </div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+      </>
+    );
   }
 
   return (
@@ -263,6 +443,25 @@ export function CustomSelect({
           // first-letter jump) and fights the cursor. Only search box
           // keystrokes are exempted below; item navigation is untouched.
           onCloseAutoFocus={(event) => searchable && event.preventDefault()}
+          /**
+           * Ignore an "outside" press in the first moments after opening.
+           *
+           * On a phone the menu opens on `click`, not `pointerdown` (Radix
+           * defers for non-mouse pointers), so the rest of that same tap is
+           * still to come — and the layout moves underneath it: the mobile
+           * shell scrolls `main` rather than the document, while Radix's
+           * content mounts react-remove-scroll and locks the body too. The
+           * same double lock this repo already worked around for MobileSheet.
+           * When that shifts the trigger out from under the finger, the tap's
+           * own release lands outside the menu and dismisses it — the menu
+           * appears to open and shut in one tap.
+           *
+           * A dismissal this soon can only be the opening tap; a deliberate
+           * second press is never 300ms behind the first.
+           */
+          onPointerDownOutside={(event) => {
+            if (Date.now() - openedAtRef.current < 300) event.preventDefault();
+          }}
           className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line bg-surface p-1 shadow-lg"
         >
           {searchable ? (
