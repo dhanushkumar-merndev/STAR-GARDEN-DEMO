@@ -74,20 +74,26 @@ const CAPABILITIES = [
 export function AboutApp() {
   return (
     <main className="mx-auto w-full max-w-4xl px-5 py-12 sm:py-16">
-      <header className="flex flex-col items-start gap-5">
+      <header className="flex flex-col items-center gap-5 text-center">
         <Image
           src="/images/logo.webp"
           alt="Star Gardens"
-          width={56}
-          height={56}
-          className="rounded-lg"
+          width={400}
+          height={72}
+          className="h-10 w-auto sm:h-12"
           priority
         />
         <div>
+          {/* MUST stay visible, and must read exactly the app name configured on
+              the OAuth consent screen. Google's branding review compares the two
+              and rejected a previous attempt for a mismatch: "The app name 'Star
+              Gardens CRM' ... does not match the app name on your homepage." The
+              logo is a wordmark reading "Star Gardens" only, so it cannot stand in
+              for this. Do not hide it (sr-only) or delete it. */}
           <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
             Star Gardens CRM
           </h1>
-          <p className="mt-2 max-w-2xl text-base text-ink-muted">
+          <p className="mx-auto mt-2 max-w-2xl text-base text-ink-muted">
             The internal tool the Star Gardens team uses to manage landscaping enquiries — from
             the first phone call through the site visit, the garden design and the build itself.
           </p>
